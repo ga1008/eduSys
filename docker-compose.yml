@@ -23,8 +23,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-    depends_on:
-      - nginx
 
   frontend:
     # Vue 前端占位服务

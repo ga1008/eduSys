@@ -113,12 +113,6 @@ TEMPLATES = [
     },
 ]
 
-REST_FRAMEWORK = {
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',  # 仅使用 JSON 渲染器
-    ]
-}
-
 WSGI_APPLICATION = 'EDU.wsgi.application'
 
 
@@ -142,6 +136,9 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',  # 仅使用 JSON 渲染器
+    ]
 }
 
 SESSION_COOKIE_SAMESITE = 'None'  # 允许跨站
