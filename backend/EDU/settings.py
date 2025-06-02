@@ -66,7 +66,7 @@ INSTALLED_APPS = [
     'education',  # 注册 education app
     'corsheaders',
     'course.apps.CourseConfig',
-    'django-celery-beat',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
