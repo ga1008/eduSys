@@ -200,7 +200,7 @@ const generatedDefaultPrompt = computed(() => {
 ${assignmentDescription}
 作业满分值：${assignmentMaxScore}
 ------------------------------------
-请基于以上信息和下方学生的实际提交内容进行批改。最后严格按照以下格式返回批改结果：
+请基于以上信息和下方学生的实际提交内容进行批改。最后严格按照以下格式返回批改结果，不需要任何其他的多余字符：
 {
   "score":XX,
   "comment":"作业批改评语，可以是markdown格式，不超过200字",
