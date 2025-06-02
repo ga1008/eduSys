@@ -196,18 +196,37 @@ class AssignmentSubmissionSerializer(serializers.ModelSerializer):
     files = serializers.SerializerMethodField()
     # 上传文件时，接受一个文件列表字段（write_only，只用于反序列化提交）
     upload_files = serializers.ListField(
-        child=serializers.FileField(max_length=10 * 1024 * 1024),  # 单个文件大小限制10MB
+        child=serializers.FileField(max_length=10 * 1024 * 1024, allow_empty_file=True),  # 单个文件大小限制10MB
         write_only=True,
         allow_empty=True,
         required=False,
-        source='files'  # 暂存上传的文件列表
+        # source='files'  # 暂存上传的文件列表
     )
+
+    student_name = serializers.CharField(source='student.name', read_only=True, default='')  # 添加学生姓名
+    student_number = serializers.CharField(source='student.student_number', read_only=True, default='')  # 添加学号
 
     class Meta:
         model = AssignmentSubmission
-        fields = ['id', 'assignment', 'title', 'content', 'upload_files', 'files', 'score', 'teacher_comment',
-                  'is_returned', 'submitted']
-        read_only_fields = ['score', 'teacher_comment', 'is_returned', 'files']
+        fields = [
+            'id', 'assignment', 'student', 'student_name', 'student_number',  # 添加student, student_name, student_number
+            'title', 'content', 'upload_files', 'files',
+            'score', 'teacher_comment', 'is_returned', 'submitted',
+            'submit_time',  # 确保 submit_time 在
+            # 新增AI相关字段 (如果模型已添加)
+            'ai_comment', 'ai_score', 'ai_generated_similarity',
+            'ai_grading_status', 'ai_grading_task_id'
+        ]
+        read_only_fields = [
+            'student', 'student_name', 'student_number',  # student应只读，通过perform_create设置
+            'files', 'submit_time',
+            # AI结果字段也应该是只读的，由系统更新
+            'ai_comment', 'ai_score', 'ai_generated_similarity',
+            'ai_grading_status', 'ai_grading_task_id'
+        ]
+        extra_kwargs = {  # 确保 student 字段在创建时不强制要求，它将从 request.user 获取
+            'student': {'required': False}
+        }
 
     def get_files(self, obj):
         """序列化提交关联的附件文件列表"""

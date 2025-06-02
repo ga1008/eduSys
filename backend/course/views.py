@@ -1,6 +1,9 @@
 # backend/course/views.py
+import logging
+import os
 from io import BytesIO
 
+import httpx
 from django.db.models import Q, Count, Avg
 from django.utils import timezone
 from rest_framework import generics, status, permissions, viewsets
@@ -20,6 +23,9 @@ from .serializers import CourseInfoSerializer, AssignmentSubmissionSerializer, \
     StudentDashboardSerializer, StudentCourseCardSerializer
 from .serializers import CourseSerializer, CourseBriefSerializer, TeacherCourseClassSerializer, MaterialSerializer, \
     HomeworkSerializer
+from .utils import ALLOWED_EXTENSIONS, read_uploaded_file_content, MAX_CONTENT_LENGTH, extract_json_from_string
+
+logger = logging.getLogger(__name__)
 
 
 @action(detail=True, methods=['get'])
@@ -1062,53 +1068,218 @@ class AssignmentSubmissionView(viewsets.ModelViewSet):
         return AssignmentSubmission.objects.filter(student=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        """学生提交作业"""
-        assignment_id = request.data.get('assignmentId')
-        if not assignment_id:
-            return Response({"detail": "必须提供 assignment ID"}, status=status.HTTP_400_BAD_REQUEST)
-        # 检查是否已有提交记录
-        if AssignmentSubmission.objects.filter(assignment_id=assignment_id, student=request.user).count() >= 5:
-            return Response({"detail": "最多允许提交5次"}, status=status.HTTP_400_BAD_REQUEST)
-        # 检查截止时间
+        assignment_id = request.data.get('assignment')  # 前端发送的可能是 assignment ID
+        if not assignment_id:  # 在您的urls.py中，assignment_id是从URL路径参数获取的
+            assignment_id_from_url = kwargs.get('assignment_id')
+            if not assignment_id_from_url:
+                return Response({"detail": "必须提供作业ID (assignment ID)"}, status=status.HTTP_400_BAD_REQUEST)
+            assignment_id = assignment_id_from_url
+
         try:
             assignment = Assignment.objects.get(pk=assignment_id)
         except Assignment.DoesNotExist:
             return Response({"detail": "指定的作业不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        # 权限与截止时间检查
         if assignment.course_class.class_obj != getattr(request.user, "class_enrolled", None):
             return Response({"detail": "无权限提交该作业"}, status=status.HTTP_403_FORBIDDEN)
         if timezone.now() > assignment.due_date:
             return Response({"detail": "已超过作业截止时间，不能提交"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 将历史提交都标记为失效
-        AssignmentSubmission.objects.filter(assignment_id=assignment_id, student=request.user).delete()
+        # 检查提交次数 (如果有限制)
+        # existing_submissions_count = AssignmentSubmission.objects.filter(assignment=assignment, student=request.user).count()
+        # if existing_submissions_count >= 5: # 假设最多提交5次
+        #     return Response({"detail": "作业提交次数已达上限"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 创建提交记录（先不保存到数据库，等待附件处理完毕后再保存）
-        data = {
-            "assignment": assignment_id,
-            "title": request.data.get("title", ""),
+        # 处理表单数据
+        serializer_data = {
+            "assignment": assignment.id,
+            "title": request.data.get("title", f"{assignment.title} - 提交"),
             "content": request.data.get("content", ""),
-            "submitted": True,  # 标记为已提交
+            "submitted": True,
         }
-        submission_serializer = self.get_serializer(data=data)
+        submission_serializer = self.get_serializer(data=serializer_data)
         submission_serializer.is_valid(raise_exception=True)
-        submission = submission_serializer.save(student=request.user)  # 保存提交记录（此时还没有附件）
+        submission = submission_serializer.save(student=request.user)  # 保存，确保 student 被设置
 
-        # 处理上传的文件附件
-        files = request.FILES.getlist('files') or request.FILES.getlist('upload_files') or []
+        # 处理文件上传
+        uploaded_files_content = []
+        uploaded_file_names = []
+        files_to_process = request.FILES.getlist('files') or request.FILES.getlist('upload_files') or []
 
+        can_ai_grade_files = True
         minio_client = MinioClient()
-        for file_obj in files:
-            # 读取文件内容到内存并获取大小
-            file_data = file_obj.read()
-            object_name = minio_client.upload_file(file_data=file_data)
-            # 记录附件信息到数据库
-            AssignmentSubmissionFile.objects.create(
-                submission=submission,
-                file_name=object_name,
-                original_name=file_obj.name
-            )
+
+        for uploaded_file in files_to_process:
+            original_name = uploaded_file.name
+            file_ext = os.path.splitext(original_name)[1].lower()
+
+            # MinIO上传逻辑保持不变
+            try:
+                file_data_bytes = uploaded_file.read()  # 读取文件数据以供上传
+                uploaded_file.seek(0)  # 重置文件指针，以便后续可能的读取
+                object_name_in_minio = minio_client.upload_file(file_data=file_data_bytes)
+                AssignmentSubmissionFile.objects.create(
+                    submission=submission,
+                    file_name=object_name_in_minio,
+                    original_name=original_name
+                )
+                uploaded_file_names.append(original_name)
+            except Exception as e:
+                logger.error(f"MinIO upload failed for {original_name}: {e}")
+                # 可以选择是否因此中断整个提交过程
+                submission.delete()  # 如果上传失败，回滚提交
+                return Response({"detail": f"文件 {original_name} 上传失败: {e}"},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            if file_ext not in ALLOWED_EXTENSIONS:
+                logger.info(
+                    f"File {original_name} has unsupported extension {file_ext}, skipping AI grading for files.")
+                can_ai_grade_files = False  # 一旦有不支持的文件，就不再尝试读取文件内容给AI
+                # 不再读取这个文件，但其他允许的文件仍然可以尝试读取（如果策略如此）
+                # 但当前策略是：只要有一个文件类型不支持，就不把任何文件内容给AI
+                break  # 如果一个文件类型不合规，直接判定文件部分不适合AI
+
+            if can_ai_grade_files:  # 只有在所有文件类型都符合的情况下才读取
+                content = read_uploaded_file_content(uploaded_file)
+                if content:
+                    uploaded_files_content.append(f"\n\n--- 文件: {original_name} ---\n{content}")
+                else:
+                    logger.warning(f"Could not read content from allowed file: {original_name}")
+
+        # --- AI 自动批改逻辑 ---
+        if assignment.ai_grading_enabled:
+            submission.ai_grading_status = 'pending'  # 先标记为待处理
+            final_student_content = submission.content
+
+            if not can_ai_grade_files:  # 如果文件类型不允许，则标记跳过
+                logger.info(f"AI grading skipped for submission {submission.id} due to unsupported file types.")
+                submission.ai_grading_status = 'skipped'
+                submission.ai_comment = "由于提交了不支持AI分析的文件类型（如压缩包、图片等），本次未进行AI辅助批改。"
+                submission.save(update_fields=['ai_grading_status', 'ai_comment'])
+            else:
+                for file_c in uploaded_files_content:
+                    final_student_content += file_c
+
+                if len(final_student_content) > MAX_CONTENT_LENGTH:
+                    logger.info(
+                        f"AI grading skipped for submission {submission.id} due to content length > {MAX_CONTENT_LENGTH}.")
+                    submission.ai_grading_status = 'skipped'
+                    submission.ai_comment = f"由于提交内容总字数超过{MAX_CONTENT_LENGTH}字，本次未进行AI辅助批改。"
+                    submission.save(update_fields=['ai_grading_status', 'ai_comment'])
+                else:
+                    submission.ai_grading_status = 'processing'  # 标记为处理中
+                    submission.save(update_fields=['ai_grading_status'])
+
+                    ai_system_prompt = assignment.ai_grading_prompt or \
+                                       f"课程《{assignment.course_class.course.name}》的作业《{assignment.title}》，描述：{assignment.description}。满分：{assignment.max_score}。请批改。"
+
+                    user_content_for_ai = f"学生作业标题：{submission.title}\n学生提交内容：\n{final_student_content}"
+                    if uploaded_file_names:  # 仅当有成功上传的文件时才添加这部分
+                        user_content_for_ai += f"\n\n学生上传文件列表：{', '.join(uploaded_file_names)}"
+
+                    messages_for_ai = [
+                        {"role": "system", "content": ai_system_prompt},
+                        {"role": "user", "content": user_content_for_ai}
+                    ]
+
+                    ai_request_payload = {
+                        "messages": messages_for_ai,
+                        "use_reasoning_model": True,  # 通常批改需要更好的模型
+                        "model": None,  # 让AI服务自行选择
+                        "provider": None,  # 让AI服务自行选择
+                        "response_format": {"type": "json_object"}  # 明确要求JSON输出
+                    }
+
+                    logger.info(f"Sending request to AI service for submission {submission.id}")
+                    try:
+                        # 直接调用AI服务 (如果AI服务与Django在同一网络或可访问)
+                        # 注意: 这里的AI_SERVICE_URL需要配置在Django settings或者.env
+                        # from django.conf import settings
+                        # ai_service_url = getattr(settings, 'AI_SERVICE_URL', 'http://localhost:8080/api/v1/chat/completions')
+                        # 此处硬编码仅为示例，实际应从配置读取
+                        ai_service_url = os.getenv('AI_SERVICE_URL', 'http://localhost:8080/api/v1/chat/completions')
+
+                        # 使用 httpx 进行异步调用 (如果是在异步视图中) 或同步调用
+                        # 当前视图是同步的，所以使用同步调用
+                        # 对于可能耗时长的AI批改，最佳实践是通过Celery任务异步调用
+                        # 这里简化为直接同步调用，并设置超时
+                        # 后续应改为通过Celery任务调用AI服务的异步接口
+
+                        task_payload = {
+                            "request_data": ai_request_payload,  # AIRequest 字典
+                            "submission_id": submission.id  # 传递 submission_id 以便回调更新
+                        }
+                        # 假设您的Celery任务名为 'ai_service.tasks.trigger_ai_grading_for_submission'
+                        # from ai_service.celery_app import celery_app # 需要能访问到celery_app
+                        # ai_task = celery_app.send_task('ai_service.tasks.trigger_ai_grading_for_submission', args=[task_payload])
+
+                        # 暂时先不通过celery，直接调用 ai_service 的celery task分发接口
+                        # 这个接口会返回 task_id
+                        with httpx.Client(timeout=20.0) as client:  # 短超时，因为只是分发任务
+                            response = client.post(ai_service_url, json=ai_request_payload)
+                            response.raise_for_status()  # 如果HTTP状态码是4xx或5xx，则引发异常
+                            ai_api_response = response.json()
+
+                        if ai_api_response.get("success") and ai_api_response.get("task_id"):
+                            submission.ai_grading_task_id = ai_api_response["task_id"]
+                            submission.ai_grading_status = 'processing'  # 已发送给AI服务处理
+                            logger.info(
+                                f"AI grading task {submission.ai_grading_task_id} dispatched for submission {submission.id}.")
+                        elif ai_api_response.get("success") and ai_api_response.get("content"):  # 如果AI服务同步返回了结果
+                            logger.info(f"AI service returned synchronous result for submission {submission.id}")
+                            raw_ai_output = ai_api_response.get("content")
+                            parsed_json_result = extract_json_from_string(raw_ai_output)
+                            if parsed_json_result and "score" in parsed_json_result and "comment" in parsed_json_result:
+                                submission.ai_score = parsed_json_result.get("score")
+                                # 确保分数不超过满分
+                                if submission.ai_score is not None and assignment.max_score is not None:
+                                    submission.ai_score = min(max(0, float(submission.ai_score)),
+                                                              float(assignment.max_score))
+
+                                submission.ai_comment = parsed_json_result.get("comment")
+                                submission.ai_generated_similarity = parsed_json_result.get("AI生成疑似度")
+                                submission.ai_grading_status = 'completed'
+                                logger.info(
+                                    f"AI grading completed for submission {submission.id}. Score: {submission.ai_score}")
+                            else:
+                                submission.ai_grading_status = 'failed'
+                                submission.ai_comment = f"AI返回格式错误或缺少必要字段。原始输出: {raw_ai_output[:500]}"  # 只记录部分原始输出
+                                logger.error(
+                                    f"AI result parsing failed for submission {submission.id}. Raw: {raw_ai_output}")
+                        else:  # AI API 调用失败或未返回 task_id
+                            submission.ai_grading_status = 'failed'
+                            submission.ai_comment = f"AI服务调用失败: {ai_api_response.get('error', '未知错误')}"
+                            logger.error(
+                                f"AI service call failed for submission {submission.id}: {ai_api_response.get('error')}")
+
+                        submission.save()
+
+                    except httpx.TimeoutException:
+                        logger.error(f"AI service request timed out for submission {submission.id} (dispatching task).")
+                        submission.ai_grading_status = 'failed'
+                        submission.ai_comment = "AI服务请求超时（分发任务阶段）。"
+                        submission.save(update_fields=['ai_grading_status', 'ai_comment'])
+                    except httpx.RequestError as e:
+                        logger.error(f"AI service request error for submission {submission.id}: {e}")
+                        submission.ai_grading_status = 'failed'
+                        submission.ai_comment = f"AI服务请求错误: {e}"
+                        submission.save(update_fields=['ai_grading_status', 'ai_comment'])
+                    except Exception as e:  # 其他未知错误
+                        logger.error(f"Unexpected error during AI grading dispatch for submission {submission.id}: {e}",
+                                     exc_info=True)
+                        submission.ai_grading_status = 'failed'
+                        submission.ai_comment = f"AI批改过程中发生未知错误: {e}"
+                        submission.save(update_fields=['ai_grading_status', 'ai_comment'])
+        else:  # AI批改未启用
+            submission.ai_grading_status = 'skipped'
+            submission.save(update_fields=['ai_grading_status'])
+
         # 返回创建的提交记录数据
-        return Response(self.get_serializer(submission).data, status=status.HTTP_201_CREATED)
+        # 注意：此时的 submission 对象可能已经包含了 AI 批改的初步状态或 task_id
+        # 但完整的AI结果是异步的，需要教师后续查看或系统轮询更新
+        final_response_serializer = self.get_serializer(submission)
+        return Response(final_response_serializer.data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, *args, **kwargs):
         """撤回作业提交（删除提交记录）"""

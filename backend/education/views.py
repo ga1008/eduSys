@@ -1,4 +1,5 @@
 # views.py
+import logging
 
 import openpyxl
 import pandas as pd
@@ -19,6 +20,8 @@ from rest_framework.views import APIView
 from .models import Class, User, TeacherCourseClass, Course
 from .permissions import IsSuperAdmin, IsAdmin, IsTeacher
 from .serializers import ClassSerializer, StudentSerializer, TeacherSerializer
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
@@ -103,7 +106,6 @@ def me_view(request):
     return Response(data, status=status.HTTP_200_OK)
 
 
-
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = User.objects.filter(role='teacher')
     serializer_class = TeacherSerializer
@@ -120,6 +122,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
                 Q(phone__icontains=search)
             )
         return qs
+
 
 class ClassViewSet(viewsets.ModelViewSet):
     queryset = Class.objects.all()

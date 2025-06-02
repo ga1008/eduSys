@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
+from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -18,6 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 从 .env 读取MYSQL和redis以及minio的连接信息
 import os
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 # 读取mysql环境变量
 MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
@@ -42,7 +43,6 @@ MINIO_ENDPOINT = f'{MINIO_HOST}:{MINIO_PORT}'
 
 DEPLOY_HOST = os.getenv('DEPLOY_HOST', 'localhost')
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -53,7 +53,6 @@ SECRET_KEY = 'django-insecure-6*y@#^g9x3ia2j1$g0&@x^*^h53ysls-!0)irk5nb@cyg@u*e_
 DEBUG = True
 
 ALLOWED_HOSTS = []
-
 
 # Application definition
 
@@ -115,7 +114,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'EDU.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
@@ -125,7 +123,7 @@ DATABASES = {
         'NAME': MYSQL_DATABASE,
         'USER': MYSQL_USER,
         'PASSWORD': MYSQL_PASSWORD,
-        'HOST': MYSQL_HOST,      # 与 docker-compose 中的服务名对应
+        'HOST': MYSQL_HOST,  # 与 docker-compose 中的服务名对应
         'PORT': MYSQL_PORT,
     }
 }
@@ -141,9 +139,19 @@ REST_FRAMEWORK = {
     ]
 }
 
-SESSION_COOKIE_SAMESITE = 'None'  # 允许跨站
-SESSION_COOKIE_SECURE = True     # SameSite=None 时必须使用HTTPS下的安全Cookie
+CELERY_BEAT_SCHEDULE = {
+    'check-ai-grading-results-every-5-minutes': {
+        'task': 'course.tasks.check_ai_grading_results',  # 任务的完整路径
+        'schedule': timedelta(minutes=5),  # 每5分钟执行一次
+    },
+    'cleanup-old-ai-submissions-every-hour': {
+        'task': 'course.tasks.cleanup_old_processing_ai_submissions',
+        'schedule': timedelta(hours=1),  # 每小时执行一次
+    },
+}
 
+SESSION_COOKIE_SAMESITE = 'None'  # 允许跨站
+SESSION_COOKIE_SECURE = True  # SameSite=None 时必须使用HTTPS下的安全Cookie
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -178,7 +186,6 @@ TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
