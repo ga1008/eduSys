@@ -44,7 +44,7 @@
         class="hw-table"
         empty-text="暂无作业数据"
     >
-      <el-table-column label="作业标题" min-width="250">
+      <el-table-column label="作业标题" min-width="120">
         <template #default="scope">
           <div class="title-cell">
             <el-tag :type="summitMarkedType(scope.row)" size="small"
@@ -63,7 +63,7 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="截止日期" min-width="180" align="center">
+      <el-table-column label="截止日期" align="center">
         <template #default="scope">
           <div>{{ formatDate(scope.row.due_date || scope.row.deadline) }}</div>
           <div v-if="scope.row.due_date || scope.row.deadline" style="margin-top: 5px;">
@@ -91,7 +91,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column fixed="right" label="操作" width="280" align="center">
+      <el-table-column fixed="right" label="操作" align="center">
         <template #default="scope">
           <div class="button-group">
             <el-button size="small" type="success" plain @click="pushToHomeworkSubmissions(scope.row)">
