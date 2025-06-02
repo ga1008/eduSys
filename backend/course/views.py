@@ -577,6 +577,34 @@ class HomeworkViewSet(viewsets.ModelViewSet):
         # 设置发布人
         serializer.save(deployer=self.request.user)
 
+    @action(detail=True, methods=['patch'], url_path='toggle-ai-grading')
+    def toggle_ai_grading(self, request, pk=None):
+        assignment = self.get_object()
+        # 权限检查：确保是作业的部署者或相关教师
+        if assignment.deployer != request.user and assignment.course_class.teacher != request.user:
+            if not request.user.role in ['admin', 'superadmin']:  # 管理员豁免
+                return Response({"detail": "无权限修改此作业的AI批改设置"}, status=status.HTTP_403_FORBIDDEN)
+
+        enabled_flag = request.data.get('ai_grading_enabled')
+        if enabled_flag is None or not isinstance(enabled_flag, bool):
+            return Response({"detail": "请提供 'ai_grading_enabled' (布尔值)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        assignment.ai_grading_enabled = enabled_flag
+        assignment.save(update_fields=['ai_grading_enabled'])
+
+        # 如果开启AI批改但没有提示词，可以考虑设置一个默认提示词或警告
+        # if assignment.ai_grading_enabled and not assignment.ai_grading_prompt:
+        #     # 这里可以生成一个默认的 prompt，但通常前端处理更好
+        #     # assignment.ai_grading_prompt = f"课程《{assignment.course_class.course.name}》的作业《{assignment.title}》..."
+        #     # assignment.save(update_fields=['ai_grading_prompt'])
+        #     logger.warning(f"AI grading enabled for assignment {assignment.id} without a prompt.")
+
+        return Response(
+            {"detail": f"AI辅助批改已{'启用' if assignment.ai_grading_enabled else '禁用'}",
+             "ai_grading_enabled": assignment.ai_grading_enabled},
+            status=status.HTTP_200_OK
+        )
+
     # 支持删除操作
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

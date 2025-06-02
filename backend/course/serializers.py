@@ -3,7 +3,7 @@ from django.db.models import Avg
 from django.utils import timezone
 from rest_framework import serializers
 from .models import Course, TeacherCourseClass, Assignment, AssignmentSubmission
-from education.models import Class, Material, Assignment, User
+from education.models import Class, Material, User
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -93,7 +93,10 @@ class HomeworkSerializer(serializers.ModelSerializer):
     class Meta:
         model = Assignment
         fields = ['id', 'title', 'description', 'due_date', 'max_score',
-                  'deploy_date', 'deployer', 'active', 'file', 'course_class', 'course_class_name', 'submit_count', 'marked_count']
+                  'deploy_date', 'deployer', 'active', 'file', 'course_class', 'course_class_name', 'submit_count',
+                  'marked_count',
+                  'ai_grading_enabled', 'ai_grading_prompt'
+                  ]
         read_only_fields = ['deploy_date', 'deployer']
 
 
@@ -279,7 +282,6 @@ class StudentDashboardSerializer(serializers.ModelSerializer):
                 as_dic['submitted'] = False
             as_lis.append(as_dic)
         return as_lis
-
 
     def get_avg_score(self, obj):
         from .models import AssignmentSubmission

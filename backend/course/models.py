@@ -57,6 +57,9 @@ class Assignment(models.Model):
 
     active = models.BooleanField(default=True)                 # 是否启用作业
 
+    ai_grading_enabled = models.BooleanField(default=False, verbose_name="启用AI辅助批改")
+    ai_grading_prompt = models.TextField(blank=True, null=True, verbose_name="AI辅助批改提示词")
+
     create_time = models.DateTimeField(auto_now_add=True, null=True, blank=True)  # 创建时间
     update_time = models.DateTimeField(auto_now=True, null=True, blank=True)      # 更新时间
 
