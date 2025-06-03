@@ -1,4 +1,4 @@
-from openai import AsyncOpenAI
+from openai import OpenAI  # MODIFIED: Import synchronous OpenAI client
 from app.llm_providers.base_provider import BaseLLMProvider, LLMRequest, LLMResponse, Message
 from app.core.config import settings
 import logging
@@ -14,18 +14,18 @@ class SiliconFlowProvider(BaseLLMProvider):
             default_model=settings.SF_MODEL,
             reasoning_model=settings.SF_MODEL_R
         )
-        self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)  # MODIFIED: Use synchronous client
         self.provider_name = "SiliconFlow"
 
-    async def generate_response(self, request: LLMRequest) -> LLMResponse:
+    def generate_response(self, request: LLMRequest) -> LLMResponse:  # MODIFIED: Removed async
         model_to_use = request.model or self.get_model_name(request.use_reasoning_model)
         messages_dict = [msg.model_dump() for msg in request.messages]
 
         try:
             logger.info(f"[{self.provider_name}] Requesting model: {model_to_use} with messages: {messages_dict}")
-            completion = await self.client.chat.completions.create(
+            completion = self.client.chat.completions.create(  # MODIFIED: Removed await
                 model=model_to_use,
-                messages=messages_dict,
+                messages=messages_dict,  # type: ignore
                 stream=request.stream,
                 timeout=request.timeout or settings.DEFAULT_TIMEOUT,
                 max_tokens=request.max_tokens,
@@ -39,22 +39,24 @@ class SiliconFlowProvider(BaseLLMProvider):
             logger.error(f"[{self.provider_name}] Error generating response: {e}")
             return LLMResponse(error=str(e), provider_name=self.provider_name, model_used=model_to_use)
 
-# 测试
-if __name__ == "__main__":
-    import asyncio
 
-    async def test_siliconflow():
+if __name__ == "__main__":
+    # import asyncio # MODIFIED: Not needed for sync test
+
+    # async def test_siliconflow(): # MODIFIED: No longer async
+    def test_siliconflow_sync():
         provider = SiliconFlowProvider()
-        request = LLMRequest(
+        request_data = LLMRequest(
             messages=[Message(role="user", content="Hello, 你好吗?")],
-            model="Pro/deepseek-ai/DeepSeek-V3",
+            model="Pro/deepseek-ai/DeepSeek-V3",  # Ensure this model is available or use settings
             use_reasoning_model=False,
             stream=False,
             timeout=30,
             max_tokens=100,
             temperature=0.7
         )
-        response = await provider.generate_response(request)
+        response = provider.generate_response(request_data)  # MODIFIED: Direct call
         print(response)
 
-    asyncio.run(test_siliconflow())
+
+    test_siliconflow_sync()  # MODIFIED: Call sync function

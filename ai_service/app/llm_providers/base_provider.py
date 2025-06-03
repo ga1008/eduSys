@@ -34,7 +34,7 @@ class BaseLLMProvider(ABC):
         self.reasoning_model = reasoning_model
 
     @abstractmethod
-    async def generate_response(self, request: LLMRequest) -> LLMResponse:
+    def generate_response(self, request: LLMRequest) -> LLMResponse: # MODIFIED
         pass
 
     def get_model_name(self, use_reasoning_model: bool) -> str:
