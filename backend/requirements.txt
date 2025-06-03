@@ -8,4 +8,4 @@ pandas
 dotenv
 minio
 chardet
-django-celery-beat
+django_celery_beat
