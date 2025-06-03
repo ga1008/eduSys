@@ -284,6 +284,7 @@
 <script setup>
 import {computed, nextTick, onMounted, ref} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
+import stuRequest from '@/utils/request_stu' // 确保使用正确的API请求实例
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn' // Ensure locale is imported
