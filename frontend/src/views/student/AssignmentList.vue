@@ -117,17 +117,6 @@
                 {{ truncateDescription(asg.description) }}
               </div>
 
-              <div v-if="asg.ai_grading_status && asg.ai_grading_status !== 'pending'" class="ai-grading-info-list">
-                <el-tag size="small" :type="getAiStatusTagType(asg.ai_grading_status)" effect="light">
-                  AI批改: {{ getAiStatusText(asg.ai_grading_status) }}
-                </el-tag>
-                <el-tag v-if="asg.ai_grading_status === 'completed' && asg.ai_score !== null" size="small"
-                        type="success" effect="light" class="ml-1">
-                  AI评分: {{ asg.ai_score }}
-                </el-tag>
-              </div>
-
-
               <div class="assignment-meta">
                 <div class="meta-item">
                   <el-icon>
@@ -167,39 +156,20 @@
                     v-if="isOverdue(asg) && (!asg.submitted || asg.is_returned)"
                     content="该作业已截止，无法提交"
                     placement="top">
-                  <el-button
-                      type="info"
-                      size="small"
-                      disabled>
-                    已截止
-                  </el-button>
+                  <el-button type="info" size="small" disabled>已截止</el-button>
                 </el-tooltip>
                 <el-tooltip
                     v-else-if="isOverdue(asg) && asg.submitted && !asg.is_returned"
                     content="该作业已截止"
                     placement="top">
-                  <el-button
-                      type="primary"
-                      size="small"
-                      @click="goSubmit(asg.id)">
-                    查看提交
-                  </el-button>
+                  <el-button type="primary" size="small" @click="goSubmit(asg.id)">查看提交</el-button>
                 </el-tooltip>
                 <template v-else>
-                  <el-button
-                      type="primary"
-                      size="small"
-                      @click="goSubmit(asg.id)">
-                    {{ isEffectivelySubmitted(asg) ? '查看/修改提交' : '去提交' }}
+                  <el-button type="primary" size="small" @click="goSubmit(asg.id)">
+                    {{ isEffectivelySubmitted(asg) ? '查看/重新提交' : '去提交' }}
                   </el-button>
                 </template>
-
-                <el-button
-                    text
-                    size="small"
-                    @click="previewAssignment(asg)">
-                  查看详情
-                </el-button>
+                <el-button text size="small" @click="previewAssignment(asg)">查看详情</el-button>
               </div>
             </div>
           </el-card>
@@ -214,84 +184,85 @@
       <el-button @click="statusFilter = 'all'">查看全部作业</el-button>
     </el-empty>
 
-    <el-dialog
-        v-model="previewDialogVisible"
-        title="作业详情"
-        width="700px"
-        top="5vh"
-        custom-class="assignment-preview-dialog"
-    >
+    <el-dialog v-model="previewDialogVisible" title="作业详情" width="600px" custom-class="assignment-dialog">
       <template v-if="currentAssignment">
         <div class="dialog-content">
           <h2 class="dialog-title">{{ currentAssignment.title }}</h2>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="所属课程">
-              {{ currentAssignment.course_class_name }}
-            </el-descriptions-item>
-            <el-descriptions-item label="截止日期"
-                                  :label-class-name="isOverdue(currentAssignment) ? 'text-red-500' : ''">
-              <span :class="{'text-red-500 font-bold': isOverdue(currentAssignment)}">{{
-                  formatDate(currentAssignment.due_date)
-                }}</span>
-              <el-tag v-if="!isOverdue(currentAssignment)" size="small" type="warning" class="ml-2">
+          <div class="dialog-info-row">
+            <span class="info-label">所属课程:</span>
+            <span class="info-value">{{ currentAssignment.course_class_name }}</span>
+          </div>
+          <div class="dialog-info-row">
+            <span class="info-label">截止日期:</span>
+            <span class="info-value" :class="{'text-red-500': isOverdue(currentAssignment)}">
+              {{ formatDate(currentAssignment.due_date) }}
+              <span v-if="!isOverdue(currentAssignment)" class="text-orange-500 ml-2">
                 ({{ getRemainingTime(currentAssignment.due_date) }})
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="满分">{{ currentAssignment.max_score }} 分</el-descriptions-item>
-            <el-descriptions-item label="发布教师">{{ currentAssignment.deployer_name }}</el-descriptions-item>
-            <el-descriptions-item label="发布时间">{{
-                formatDate(currentAssignment.deploy_date)
-              }}
-            </el-descriptions-item>
-            <el-descriptions-item label="作业状态">
+              </span>
+            </span>
+          </div>
+          <div class="dialog-info-row">
+            <span class="info-label">满分:</span>
+            <span class="info-value">{{ currentAssignment.max_score }} 分</span>
+          </div>
+          <div class="dialog-info-row">
+            <span class="info-label">发布:</span>
+            <span class="info-value">{{ currentAssignment.deployer_name }}</span>
+          </div>
+          <div class="dialog-info-row">
+            <span class="info-label">时间:</span>
+            <span class="info-value">{{ formatDate(currentAssignment.deploy_date) }}</span>
+          </div>
+          <div class="dialog-info-row">
+            <span class="info-label">状态:</span>
+            <span class="info-value">
               <el-tag :type="getTagType(currentAssignment)">
                 {{ getAssignmentStatusText(currentAssignment) }}
               </el-tag>
-            </el-descriptions-item>
+            </span>
+          </div>
 
-            <el-descriptions-item label="教师评分"
-                                  v-if="currentAssignment.score !== null && typeof currentAssignment.score !== 'undefined' && !currentAssignment.is_returned">
-              <el-tag :type="getScoreTagType(currentAssignment.score, currentAssignment.max_score)">
-                {{ currentAssignment.score }} / {{ currentAssignment.max_score }}
+          <div class="dialog-info-row" v-if="getFinalScore(currentAssignment) !== null">
+            <span class="info-label">得分</span>
+            <span class="info-value">
+              <el-tag :type="getScoreTagType(getFinalScore(currentAssignment))">
+                {{ getFinalScore(currentAssignment) }} 分
               </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="教师评语"
-                                  v-if="currentAssignment.teacher_comment && !currentAssignment.is_returned"
-                                  :span="currentAssignment.score === null ? 2 : 1">
-              <div class="comment-box">{{ currentAssignment.teacher_comment }}</div>
-            </el-descriptions-item>
-          </el-descriptions>
+            </span>
+          </div>
 
-          <el-descriptions title="AI辅助批改" :column="1" border size="small" class="mt-4"
-                           v-if="currentAssignment.ai_grading_status && currentAssignment.ai_grading_status !== 'pending'">
-            <el-descriptions-item label="AI批改状态">
-              <el-tag :type="getAiStatusTagType(currentAssignment.ai_grading_status)" effect="light">
-                {{ getAiStatusText(currentAssignment.ai_grading_status) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="AI评分"
-                                  v-if="currentAssignment.ai_grading_status === 'completed' && currentAssignment.ai_score !== null">
-              <el-tag type="success" effect="plain">{{ currentAssignment.ai_score }} /
-                {{ currentAssignment.max_score }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="AI评语"
-                                  v-if="currentAssignment.ai_grading_status === 'completed' && currentAssignment.ai_comment">
-              <div class="comment-box markdown-content" v-html="renderMarkdown(currentAssignment.ai_comment)"></div>
-            </el-descriptions-item>
-            <el-descriptions-item label="AI生成疑似度"
-                                  v-if="currentAssignment.ai_grading_status === 'completed' && currentAssignment.ai_generated_similarity !== null">
-              <el-progress :percentage="Math.round(currentAssignment.ai_generated_similarity * 100)" :stroke-width="10"
-                           :color="getSimilarityColor(currentAssignment.ai_generated_similarity)"/>
-            </el-descriptions-item>
-            <el-descriptions-item label="信息"
-                                  v-if="currentAssignment.ai_grading_status === 'failed' || currentAssignment.ai_grading_status === 'skipped'">
-              <div class="comment-box">{{ currentAssignment.ai_comment }}</div>
-            </el-descriptions-item>
-          </el-descriptions>
+          <div class="dialog-info-row" v-if="getFinalComment(currentAssignment)">
+            <span class="info-label">评语:</span>
+            <div class="info-value markdown-content" v-html="renderMarkdown(getFinalComment(currentAssignment))"></div>
+          </div>
+
+          <div class="dialog-info-row"
+               v-if="currentAssignment.ai_grading_status === 'completed' && typeof currentAssignment.ai_generated_similarity === 'number'">
+            <span class="info-label">AI疑似度:</span>
+            <span class="info-value">
+              <el-progress
+                  :percentage="Math.round(currentAssignment.ai_generated_similarity * 100)"
+                  :stroke-width="10"
+                  :format="(percentage) => `${percentage}%`"
+                  style="width: 150px;"/>
+            </span>
+          </div>
+          <div class="dialog-info-row" v-if="currentAssignment.ai_grading_status === 'processing'">
+            <span class="info-label">AI批改:</span>
+            <span class="info-value"><el-tag type="info" effect="plain">正在处理中...</el-tag></span>
+          </div>
+          <div class="dialog-info-row" v-if="currentAssignment.ai_grading_status === 'failed'">
+            <span class="info-label">AI批改:</span>
+            <span class="info-value"><el-tag type="danger" effect="plain">处理失败</el-tag></span>
+          </div>
+          <div class="dialog-info-row" v-if="currentAssignment.ai_grading_status === 'skipped'">
+            <span class="info-label">AI批改:</span>
+            <span class="info-value"><el-tag type="warning" effect="plain">已跳过</el-tag></span>
+          </div>
+
 
           <div class="mt-6">
-            <div class="font-bold mb-2 text-gray-700">作业描述:</div>
+            <div class="font-bold mb-2">作业描述:</div>
             <div class="description-box markdown-content" v-html="renderMarkdown(currentAssignment.description)"></div>
           </div>
         </div>
@@ -304,7 +275,9 @@
               :disabled="isOverdue(currentAssignment) && (!currentAssignment.submitted || currentAssignment.is_returned)"
               @click="goSubmitFromPreview">
             {{
-              (isOverdue(currentAssignment) && (!currentAssignment.submitted || currentAssignment.is_returned)) ? '已截止' : (isEffectivelySubmitted(currentAssignment) ? '查看/修改提交' : '去提交')
+              (isOverdue(currentAssignment) && (!currentAssignment.submitted || currentAssignment.is_returned))
+                  ? '已截止'
+                  : (isEffectivelySubmitted(currentAssignment) ? '查看/修改提交' : '去提交')
             }}
           </el-button>
         </div>
@@ -318,18 +291,23 @@ import {computed, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import duration from 'dayjs/plugin/duration' // For more precise time differences
 import 'dayjs/locale/zh-cn'
 import {Calendar, Timer, Trophy, User} from '@element-plus/icons-vue'
 import {fetchCourseAssignments, fetchStudentCourses} from '@/api/student.js'
-import MarkdownIt from 'markdown-it'
-import DOMPurify from 'dompurify'
-// import hljs from 'highlight.js' // For full markdown-it-highlightjs, usually just import the style
-import 'highlight.js/styles/atom-one-dark.css'; // Choose a highlight.js theme
+import MarkdownIt from 'markdown-it'; // 新增
+import DOMPurify from 'dompurify'; // 新增
+// 如果需要代码高亮 (可选)
+// import hljs from 'highlight.js/lib/core';
+// import python from 'highlight.js/lib/languages/python';
+// import javascript from 'highlight.js/lib/languages/javascript';
+// import 'highlight.js/styles/github.css'; // 或其他主题
+
+// hljs.registerLanguage('python', python);
+// hljs.registerLanguage('javascript', javascript);
+
 
 // 配置 dayjs
 dayjs.extend(relativeTime)
-dayjs.extend(duration)
 dayjs.locale('zh-cn')
 
 const router = useRouter()
@@ -343,29 +321,27 @@ const activeNames = ref([]) // For el-collapse active items
 const previewDialogVisible = ref(false)
 const currentAssignment = ref(null)
 
-// 创建并配置markdown-it实例
+// 初始化 Markdown-it
 const md = new MarkdownIt({
-  html: true,        // 启用HTML标签
-  breaks: true,      // 将换行符转换为<br>
-  linkify: true,     // 自动转换URL为链接
-  typographer: true, // 启用一些语言中立的替换和引号
-  highlight: function (str, lang) { // 使用 highlight.js 进行代码高亮
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return '<pre class="hljs"><code>' +
-            hljs.highlight(str, {language: lang, ignoreIllegals: true}).value +
-            '</code></pre>';
-      } catch (__) {
-      }
-    }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
-  }
+  html: true,
+  linkify: true,
+  typographer: true,
+  // highlight: function (str, lang) { // 代码高亮 (可选)
+  //   if (lang && hljs.getLanguage(lang)) {
+  //     try {
+  //       return '<pre class="hljs"><code>' +
+  //              hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+  //              '</code></pre>';
+  //     } catch (__) {}
+  //   }
+  //   return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+  // }
 });
 
 const renderMarkdown = (markdownText) => {
   if (!markdownText) return '';
-  const renderedHTML = md.render(markdownText);
-  return DOMPurify.sanitize(renderedHTML);
+  const rawHtml = md.render(markdownText);
+  return DOMPurify.sanitize(rawHtml);
 };
 
 
@@ -379,22 +355,22 @@ const loadData = async () => {
     const {data: courseList} = await fetchStudentCourses()
     const coursePromises = courseList.map(async (course) => {
       try {
-        const {data: assignments} = await fetchCourseAssignments(course.id) // API应返回包含AI字段的数据
+        const {data: assignments} = await fetchCourseAssignments(course.id)
         const processedAssignments = (assignments || []).map(asg => ({
           ...asg,
           submitted: asg.submitted || false,
           is_returned: asg.is_returned || false,
-          score: asg.score, // Can be null
-          // 确保AI相关字段有默认值，如果API没返回
-          ai_score: asg.ai_score !== undefined ? asg.ai_score : null,
-          ai_comment: asg.ai_comment || null,
-          ai_grading_status: asg.ai_grading_status || 'pending', // 'pending' 'processing' 'completed' 'failed' 'skipped'
-          ai_generated_similarity: asg.ai_generated_similarity !== undefined ? asg.ai_generated_similarity : null,
+          score: asg.score, // 可以为 null
+          teacher_comment: asg.teacher_comment, // 可以为 null
+          ai_score: asg.ai_score, // 可以为 null
+          ai_comment: asg.ai_comment, // 可以为 null
+          ai_generated_similarity: asg.ai_generated_similarity, // 可以为 null
+          ai_grading_status: asg.ai_grading_status // 可以为 null 或 'pending', 'processing', etc.
         }));
-        return {...course, assignments: processedAssignments};
+        return {...course, assignments: processedAssignments, update_time: course.update_time || new Date(0)}; // 添加update_time默认值
       } catch (err) {
         console.error(`获取课程 ${course.name} (ID: ${course.id}) 的作业失败:`, err)
-        return {...course, assignments: []}
+        return {...course, assignments: [], update_time: course.update_time || new Date(0)}
       }
     })
     courses.value = await Promise.all(coursePromises)
@@ -408,7 +384,32 @@ const loadData = async () => {
   }
 }
 
-// ... (sortCoursesAndAssignments, setActiveCourseFromRoute, goSubmit, goSubmitFromPreview, previewAssignment, isOverdue, isEffectivelySubmitted 保持不变) ...
+// 获取最终显示分数 (优先教师，其次AI)
+const getFinalScore = (assignmentSubmission) => {
+  if (assignmentSubmission.score !== null && typeof assignmentSubmission.score !== 'undefined') {
+    return assignmentSubmission.score;
+  }
+  if (assignmentSubmission.ai_grading_status === 'completed' && assignmentSubmission.ai_score !== null && typeof assignmentSubmission.ai_score !== 'undefined') {
+    return assignmentSubmission.ai_score;
+  }
+  return null; // 没有可显示的分数
+};
+
+// 获取最终显示评语
+const getFinalComment = (assignmentSubmission) => {
+  if (assignmentSubmission.teacher_comment) {
+    return assignmentSubmission.teacher_comment;
+  }
+  if (assignmentSubmission.ai_grading_status === 'completed' && assignmentSubmission.ai_comment) {
+    return assignmentSubmission.ai_comment;
+  }
+  return ''; // 没有可显示的评语
+};
+
+
+/**
+ * 根据 update_time _time 倒序排序课程，作业按截止日期和状态排序
+ */
 const sortCoursesAndAssignments = () => {
   courses.value.sort((a, b) => dayjs(b.update_time).valueOf() - dayjs(a.update_time).valueOf());
   courses.value.forEach(course => {
@@ -426,6 +427,10 @@ const sortCoursesAndAssignments = () => {
   });
 };
 
+
+/**
+ * 设置激活的课程（手风琴展开项）
+ */
 const setActiveCourseFromRoute = () => {
   const courseIdFromRoute = route.params.id ? String(route.params.id) : null;
   if (courseIdFromRoute && courses.value.some(c => String(c.id) === courseIdFromRoute)) {
@@ -450,14 +455,21 @@ const setActiveCourseFromRoute = () => {
   }
 }
 
+
+/**
+ * 跳转到作业提交页面
+ */
 const goSubmit = (assignmentId) => {
   router.push({name: 'StudentAssignmentSubmit', params: {id: assignmentId}})
 }
 
+/**
+ * 从预览对话框跳转提交
+ */
 const goSubmitFromPreview = () => {
   if (currentAssignment.value) {
     if (isOverdue(currentAssignment.value) && (!currentAssignment.value.submitted || currentAssignment.value.is_returned)) {
-      // Already disabled
+      // 已截止且不能再提交
     } else {
       previewDialogVisible.value = false
       goSubmit(currentAssignment.value.id)
@@ -465,70 +477,48 @@ const goSubmitFromPreview = () => {
   }
 }
 
+/**
+ * 打开作业详情预览
+ */
 const previewAssignment = (assignment) => {
   currentAssignment.value = {...assignment}
   previewDialogVisible.value = true
 }
 
+/**
+ * 判断作业是否已截止
+ */
 const isOverdue = (assignment) => {
   return assignment && assignment.due_date && dayjs(assignment.due_date).isBefore(dayjs())
 }
 
+/**
+ * 判断作业是否已由学生有效提交（已提交且未被退回）
+ */
 const isEffectivelySubmitted = (assignment) => {
   return !!assignment.submitted && !assignment.is_returned;
 };
 
-
 /**
- * 获取作业状态文本 (更新以包含AI信息)
+ * 获取作业状态文本
  */
 const getAssignmentStatusText = (assignment) => {
-  let statusText = '';
-  const teacherGraded = assignment.score !== null && typeof assignment.score !== 'undefined' && !assignment.is_returned;
+  const finalScore = getFinalScore(assignment);
 
   if (isOverdue(assignment)) {
-    statusText = '已截止';
-    if (assignment.is_returned) statusText += ' (曾退回)';
-    else if (teacherGraded) statusText += ` (师评 ${assignment.score})`;
-    else if (assignment.submitted) statusText += ' (已提交)';
-    else statusText += ' (未提交)';
-  } else { // 未截止
-    if (assignment.is_returned) statusText = '已退回 (待重交)';
-    else if (teacherGraded) statusText = `已师评 (${assignment.score})`;
-    else if (assignment.submitted) statusText = '已提交 (待批改)';
-    else statusText = '待提交';
+    if (assignment.is_returned) return '已截止 (曾退回)';
+    if (assignment.submitted) {
+      return (finalScore !== null) ? `已截止 (已评分 ${finalScore})` : '已截止 (已提交)';
+    }
+    return '已截止 (未提交)';
   }
-
-  // AI 状态补充 (如果AI已完成且教师未评分)
-  if (assignment.ai_grading_status === 'completed' && !teacherGraded && assignment.ai_score !== null) {
-    statusText += ` (AI预评 ${assignment.ai_score})`;
-  } else if (assignment.ai_grading_status === 'processing' && !teacherGraded) {
-    statusText += ' (AI批改中)';
+  // Not overdue
+  if (assignment.is_returned) return '已退回 (待重交)';
+  if (assignment.submitted) {
+    return (finalScore !== null) ? `已评分 (${finalScore})` : '已提交 (待批改)';
   }
-
-  return statusText;
-};
-
-const getAiStatusText = (status) => {
-  const map = {
-    pending: '待处理',
-    processing: '处理中...',
-    completed: '已完成',
-    failed: '批改失败',
-    skipped: '已跳过(不适用AI)',
-  };
-  return map[status] || '未知状态';
-};
-
-const getAiStatusTagType = (status) => {
-  const map = {
-    pending: 'info',
-    processing: 'primary',
-    completed: 'success',
-    failed: 'danger',
-    skipped: 'warning',
-  };
-  return map[status] || 'info';
+  if (assignment.ai_grading_status === 'processing') return 'AI批改中...';
+  return '待提交';
 };
 
 
@@ -538,8 +528,11 @@ const getAiStatusTagType = (status) => {
 const getAssignmentStatusClass = (assignment) => {
   if (isOverdue(assignment)) return 'status-overdue';
   if (assignment.is_returned) return 'status-returned';
-  if (assignment.score !== null && typeof assignment.score !== 'undefined') return 'status-graded'; // 教师已评分
-  if (assignment.submitted) return 'status-submitted';
+  if (assignment.submitted) {
+    // 如果有AI正在处理，可以给一个特定状态
+    if (assignment.ai_grading_status === 'processing') return 'status-processing';
+    return 'status-submitted';
+  }
   return 'status-pending';
 };
 
@@ -547,33 +540,25 @@ const getAssignmentStatusClass = (assignment) => {
  * 获取标签类型 (for el-tag type prop)
  */
 const getTagType = (assignment) => {
-  // 优先显示教师评分状态
-  if (assignment.score !== null && typeof assignment.score !== 'undefined' && !assignment.is_returned) return 'success'; // 师评
-  if (assignment.is_returned) return 'warning'; // 退回
-  if (assignment.submitted && assignment.ai_grading_status === 'completed' && assignment.ai_score !== null) return 'primary'; // AI已评
-  if (assignment.submitted) return 'primary'; // 已提交，待批
-  if (isOverdue(assignment)) return 'info'; // 已截止未提交
+  const statusText = getAssignmentStatusText(assignment); // 使用更新后的状态文本
+  if (statusText.includes('已截止')) return 'info';
+  if (statusText.includes('已退回')) return 'warning';
+  if (statusText.includes('已评分')) return 'success';
+  if (statusText.includes('AI批改中')) return 'primary';
+  if (statusText.includes('已提交')) return 'primary';
   return 'warning'; // 待提交
 }
 
 /**
  * 获取得分标签类型
  */
-const getScoreTagType = (score, maxScore = 100) => {
+const getScoreTagType = (score) => {
   if (score === null || typeof score === 'undefined') return 'info';
-  const percentage = (parseFloat(score) / parseFloat(maxScore)) * 100;
-  if (percentage >= 85) return 'success';
-  if (percentage >= 60) return 'warning';
+  const numericScore = parseFloat(score);
+  if (numericScore >= 80) return 'success';
+  if (numericScore >= 60) return 'warning';
   return 'danger';
 }
-
-const getSimilarityColor = (similarity) => {
-  if (similarity === null || typeof similarity === 'undefined') return '#909399'; // info
-  if (similarity >= 0.7) return '#F56C6C'; // danger
-  if (similarity >= 0.4) return '#E6A23C'; // warning
-  return '#67C23A'; // success
-};
-
 
 /**
  * 获取剩余时间文本
@@ -583,29 +568,28 @@ const getRemainingTime = (dueDate) => {
   const now = dayjs();
   const due = dayjs(dueDate);
   if (due.isBefore(now)) return '已截止';
-
-  const durationObj = dayjs.duration(due.diff(now));
-  const days = Math.floor(durationObj.asDays());
-  const hours = durationObj.hours();
-  const minutes = durationObj.minutes();
-
-  if (days > 0) return `剩 ${days}天 ${hours}小时`;
-  if (hours > 0) return `剩 ${hours}小时 ${minutes}分钟`;
-  if (minutes > 0) return `剩 ${minutes}分钟`;
-  return '即将截止';
+  return '剩余 ' + due.fromNow(true);
 }
 
-// ... (formatDate, truncateDescription, getAssignmentCountType, filteredCourses, 统计数据, onMounted, watch 保持不变) ...
+/**
+ * 格式化日期
+ */
 const formatDate = (dateString) => {
   if (!dateString) return '未知';
   return dayjs(dateString).format('YYYY-MM-DD HH:mm');
 }
 
+/**
+ * 截断描述文本
+ */
 const truncateDescription = (text) => {
   if (!text) return '暂无描述';
   return text.length > 50 ? text.substring(0, 50) + '...' : text;
 }
 
+/**
+ * 基于数量获取标签类型
+ */
 const getAssignmentCountType = (count) => {
   if (count === 0) return 'info';
   if (count < 3) return 'success';
@@ -613,16 +597,17 @@ const getAssignmentCountType = (count) => {
   return 'danger';
 }
 
+// 计算属性
 const filteredCourses = computed(() => {
   return courses.value.map(course => {
     const filteredAssignments = course.assignments.filter(asg => {
       const overdue = isOverdue(asg);
-      const effectivelySubmitted = isEffectivelySubmitted(asg);
-      const isPending = !overdue && (!asg.submitted || asg.is_returned);
+      // const effectivelySubmitted = isEffectivelySubmitted(asg); // 已定义
+      const isPending = !overdue && (!asg.submitted || asg.is_returned) && asg.ai_grading_status !== 'processing';
 
       if (statusFilter.value === 'all') return true;
       if (statusFilter.value === 'pending') return isPending;
-      if (statusFilter.value === 'submitted') return !overdue && effectivelySubmitted; // 已提交指学生已交且未被退回，未截止
+      if (statusFilter.value === 'submitted') return !overdue && isEffectivelySubmitted(asg) && asg.ai_grading_status !== 'processing';
       if (statusFilter.value === 'overdue') return overdue;
       return true;
     });
@@ -631,6 +616,7 @@ const filteredCourses = computed(() => {
 });
 
 
+// 统计数据
 const totalCourses = computed(() => courses.value.length);
 
 const totalAssignments = computed(() => {
@@ -642,7 +628,7 @@ const pendingAssignments = computed(() => {
   return courses.value.reduce((total, course) => {
     const courseAssignments = course.assignments || [];
     return total + courseAssignments.filter(asg => {
-      return !isOverdue(asg) && (!asg.submitted || asg.is_returned);
+      return !isOverdue(asg) && (!asg.submitted || asg.is_returned) && asg.ai_grading_status !== 'processing';
     }).length;
   }, 0);
 });
@@ -656,6 +642,7 @@ const overdueAssignments = computed(() => {
 });
 
 
+// 生命周期钩子和监听器
 onMounted(loadData)
 
 watch(
@@ -671,7 +658,6 @@ watch(
       }
     }
 )
-
 </script>
 
 <style scoped>
@@ -711,36 +697,31 @@ watch(
 }
 
 .summary-value {
-  font-size: 28px; /* Adjusted size */
+  font-size: 32px;
   font-weight: bold;
   margin-bottom: 8px;
 }
 
 .summary-label {
-  font-size: 13px; /* Adjusted size */
+  font-size: 14px;
   color: #666;
 }
 
 .bg-blue-50 {
-  background-color: #ecf5ff;
-  color: #409EFF;
+  background-color: #e6f1f9;
 }
 
 .bg-green-50 {
-  background-color: #f0f9eb;
-  color: #67C23A;
+  background-color: #e7f6e9;
 }
 
 .bg-orange-50 {
-  background-color: #fdf6ec;
-  color: #E6A23C;
+  background-color: #fef3e6;
 }
 
 .bg-red-50 {
-  background-color: #fef0f0;
-  color: #F56C6C;
+  background-color: #fde9e9;
 }
-
 
 .course-header {
   display: flex;
@@ -764,54 +745,66 @@ watch(
 
 .assignment-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* Increased minmax */
-  gap: 20px; /* Increased gap */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
   margin-top: 16px;
 }
 
 .assignment-card {
   position: relative;
   overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border-radius: 8px; /* Added border-radius */
+  transition: transform 0.2s;
+  display: flex; /* 使用flex布局 */
+  flex-direction: column; /* 垂直排列子元素 */
 }
 
 .assignment-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1); /* Enhanced shadow */
 }
+
+.assignment-card .el-card__body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1; /* 让内容区域填满卡片 */
+}
+
+.assignment-card .p-4 { /* 作业内容的主要容器 */
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* 将动作按钮推到底部 */
+}
+
 
 .status-badge {
   position: absolute;
   top: 0;
   right: 0;
-  padding: 5px 12px; /* Adjusted padding */
+  padding: 4px 12px;
   color: white;
   font-size: 12px;
   font-weight: bold;
   border-bottom-left-radius: 8px;
-  border-top-right-radius: 8px; /* Match card radius */
 }
 
 .status-pending {
-  background-color: #E6A23C;
+  background-color: #e6a23c; /* Element Plus Warning color */
+}
+
+.status-processing { /* 新增AI处理中状态 */
+  background-color: var(--el-color-primary-light-3);
 }
 
 .status-submitted {
-  background-color: #409EFF;
-}
-
-/* Changed to primary */
-.status-graded {
-  background-color: #67C23A;
+  background-color: #67c23a; /* Element Plus Success color */
 }
 
 .status-overdue {
-  background-color: #F56C6C;
+  background-color: #f56c6c; /* Element Plus Danger color */
 }
 
 .status-returned {
-  background-color: #909399;
+  background-color: #909399; /* Element Plus Info color, or a custom warning color */
 }
 
 
@@ -836,14 +829,9 @@ watch(
   -webkit-box-orient: vertical;
 }
 
-.ai-grading-info-list {
-  margin-bottom: 10px;
-  font-size: 12px;
-}
-
 .assignment-meta {
   margin-bottom: 12px;
-  border-top: 1px solid #f0f0f0; /* Lighter border */
+  border-top: 1px solid #eee;
   padding-top: 12px;
 }
 
@@ -860,85 +848,119 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
+  margin-top: auto; /* 将动作按钮推到底部 */
+  padding-top: 10px; /* 给一点上边距 */
 }
 
-.dialog-content {
-  padding: 0px 10px 10px 10px; /* Less padding on top */
+.assignment-dialog .dialog-content { /* 确保对话框内容区域有内边距 */
+  padding: 0 20px 20px 20px;
 }
 
 .dialog-title {
-  font-size: 20px; /* Slightly larger */
+  font-size: 20px;
   font-weight: bold;
-  margin-bottom: 20px; /* More space */
-  padding-bottom: 10px; /* More space */
-  border-bottom: 1px solid #eee;
-  text-align: center; /* Center title */
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
 }
 
-.comment-box {
-  background-color: #f9fafb; /* Slightly different background */
-  padding: 10px;
+.dialog-info-row {
+  display: flex;
+  align-items: flex-start; /* 顶部对齐，特别是评语可能较长 */
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-label {
+  width: 80px;
+  color: #606266;
+  font-weight: 500;
+  flex-shrink: 0;
+  padding-right: 10px;
+}
+
+.info-value {
+  flex-grow: 1;
+  color: #303133;
+}
+
+.info-value .el-tag {
+  font-size: 13px;
+}
+
+
+.description-box {
+  background-color: #f9fafb;
+  padding: 15px;
   border-radius: 4px;
   white-space: pre-wrap;
-  line-height: 1.6;
+  line-height: 1.7;
   font-size: 14px;
-  border: 1px solid #e5e7eb; /* Light border */
-  max-height: 150px;
-  overflow-y: auto;
+  color: #303133;
+  border: 1px solid #e4e7ed;
 }
-
-.markdown-content :deep(pre) {
-  background-color: #2d2d2d; /* Dark background for code blocks */
-  color: #f8f8f2; /* Light text for code blocks */
-  padding: 1em;
-  overflow: auto;
-  border-radius: 5px;
-  margin: 1em 0;
-  font-family: 'Courier New', Courier, monospace;
-}
-
-.markdown-content :deep(code:not(.hljs)) { /* Inline code */
-  background-color: #eef1f5;
-  color: #c0341d;
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
 
 .custom-collapse :deep(.el-collapse-item__header) {
-  background-color: #fcfcfc; /* Lighter header */
-  padding: 12px 20px; /* Adjusted padding */
-  border-radius: 6px; /* Slightly more radius */
-  border: 1px solid #ebeef5;
-  font-size: 15px; /* Slightly larger font */
-}
-
-.custom-collapse :deep(.el-collapse-item__header.is-active) {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom: none;
+  background-color: #f5f7fa;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 15px;
 }
 
 .custom-collapse :deep(.el-collapse-item__wrap) {
-  padding: 20px;
+  padding: 0; /* 移除内层padding，由assignment-grid控制 */
   background-color: #ffffff;
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
   border: 1px solid #ebeef5;
   border-top: none;
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
 }
 
 .custom-collapse .el-collapse-item {
-  margin-bottom: 12px; /* More space */
+  margin-bottom: 10px;
+  border-radius: 4px;
+  overflow: hidden; /* 确保圆角生效 */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
 .custom-collapse .el-collapse-item:last-child {
   margin-bottom: 0;
 }
 
-.assignment-preview-dialog .el-dialog__body {
-  padding-top: 10px; /* Reduce top padding for dialog body */
+.markdown-content {
+  line-height: 1.7;
+  color: #303133;
+}
+
+.markdown-content :deep(p) {
+  margin-bottom: 0.8em;
+}
+
+.markdown-content :deep(ul), .markdown-content :deep(ol) {
+  padding-left: 20px;
+  margin-bottom: 0.8em;
+}
+
+.markdown-content :deep(code) {
+  background-color: #f0f2f5;
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  border-radius: 3px;
+}
+
+.markdown-content :deep(pre code) {
+  display: block;
+  padding: 1em;
+  overflow-x: auto;
+  border-radius: 5px;
+}
+
+.markdown-content :deep(blockquote) {
+  border-left: 4px solid #d0d7de;
+  padding-left: 1em;
+  color: #57606a;
+  margin-left: 0;
 }
 </style>

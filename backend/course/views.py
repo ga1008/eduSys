@@ -822,6 +822,11 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
                 "teacher_comment": ass.teacher_comment,
                 "is_returned": ass.is_returned,
                 "submit_time": ass.submit_time,
+                "ai_comment": ass.ai_comment,
+                "ai_score": ass.ai_score,
+                "ai_generated_similarity": ass.ai_generated_similarity,
+                "ai_grading_status": ass.ai_grading_status,
+                "ai_grading_task_id": ass.ai_grading_task_id,
             }
             files = []
             for ass_f in AssignmentSubmissionFile.objects.filter(submission_id=ass.id):

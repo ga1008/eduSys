@@ -1,22 +1,28 @@
 <template>
   <div class="p-6 space-y-6">
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="提交 / 编辑" name="edit">
-        <div class="assignment-container p-6">
+    <el-tabs v-model="activeTab" class="custom-tabs">
+      <el-tab-pane label="提交 / 编辑" name="edit" class="tab-pane-content">
+        <div class="assignment-container p-2 md:p-6">
           <el-skeleton v-if="loading" animated :rows="6"/>
+
           <el-alert
               v-else-if="loadError"
               type="error"
               :closable="false"
               :title="loadError"
               show-icon
-          />
-          <template v-else>
-            <div class="mb-6 flex items-center justify-between">
+              class="mb-6"
+          >
+            <template #description>
+              <p>请检查网络连接或稍后再试。如果问题持续，请联系管理员。</p>
+            </template>
+          </el-alert>
+
+          <template v-else-if="assignment && Object.keys(assignment).length > 0">
+            <div class="mb-6 flex items-center justify-between page-actions">
               <el-button
                   @click="$router.push('/student/assignments')"
-                  plain
-              >
+                  plain>
                 <el-icon class="mr-1">
                   <ArrowLeft/>
                 </el-icon>
@@ -24,53 +30,60 @@
               </el-button>
               <el-tag
                   size="large"
-                  :type="isOverdue ? 'danger' : 'success'">
+                  :type="isOverdue ? 'danger' : 'success'"
+                  effect="light"
+              >
                 {{ isOverdue ? '已截止' : '进行中' }}
               </el-tag>
             </div>
 
-            <el-card class="mb-6" shadow="hover">
+            <el-card class="mb-6 assignment-details-card" shadow="hover">
               <div class="assignment-header">
                 <h1 class="text-2xl font-bold mb-2">{{ assignment.title }}</h1>
-                <div class="text-gray-500 mb-4 text-sm">《{{ assignment.course_class_name }}》</div>
+                <div class="text-gray-500 text-sm mb-4">《{{ assignment.course_class_name }}》</div>
               </div>
-              <el-divider/>
+
+              <el-divider content-position="left">作业信息</el-divider>
+
               <div class="info-cards">
-                <el-card class="info-card" shadow="hover">
+                <el-card class="info-card" shadow="never">
                   <div class="info-card-content">
-                    <el-icon class="info-icon">
+                    <el-icon class="info-icon text-blue-500">
                       <Clock/>
                     </el-icon>
-                    <div class="info-title">截止</div>
-                    <div :class="{'text-danger font-semibold': isOverdue}" class="info-value">
+                    <div class="info-title">截止时间</div>
+                    <div :class="{'text-red-600 font-semibold': isOverdue}" class="info-value">
                       {{ formatDateTime(assignment.due_date) }}
                     </div>
-                    <el-tag v-if="!isOverdue" size="small" type="warning" class="mt-2">
+                    <el-tag v-if="!isOverdue" size="small" type="warning" effect="light" class="mt-2">
                       剩余 {{ remainingTime }}
                     </el-tag>
                   </div>
                 </el-card>
-                <el-card class="info-card" shadow="hover">
+
+                <el-card class="info-card" shadow="never">
                   <div class="info-card-content">
-                    <el-icon class="info-icon">
+                    <el-icon class="info-icon text-green-500">
                       <Trophy/>
                     </el-icon>
                     <div class="info-title">满分</div>
                     <div class="info-value">{{ assignment.max_score }} 分</div>
                   </div>
                 </el-card>
-                <el-card class="info-card" shadow="hover">
+
+                <el-card class="info-card" shadow="never">
                   <div class="info-card-content">
-                    <el-icon class="info-icon">
+                    <el-icon class="info-icon text-purple-500">
                       <Calendar/>
                     </el-icon>
                     <div class="info-title">发布时间</div>
                     <div class="info-value">{{ formatDateTime(assignment.deploy_date) }}</div>
                   </div>
                 </el-card>
-                <el-card class="info-card" shadow="hover">
+
+                <el-card class="info-card" shadow="never">
                   <div class="info-card-content">
-                    <el-icon class="info-icon">
+                    <el-icon class="info-icon text-orange-500">
                       <User/>
                     </el-icon>
                     <div class="info-title">发布教师</div>
@@ -78,8 +91,9 @@
                   </div>
                 </el-card>
               </div>
+
               <div class="mt-6">
-                <div class="font-medium text-lg mb-2 flex items-center">
+                <div class="font-medium text-lg mb-2 flex items-center section-title">
                   <el-icon class="mr-2">
                     <Document/>
                   </el-icon>
@@ -91,338 +105,255 @@
             </el-card>
 
             <template
-                v-if="isEffectivelySubmitted(mySubmissionDetails) || (mySubmissionDetails && mySubmissionDetails.is_returned)">
-              <el-card class="mb-6" shadow="hover">
+                v-if="currentDisplaySubmission && (isEffectivelySubmitted(currentDisplaySubmission) || currentDisplaySubmission.is_returned)">
+              <el-card class="mb-6 submission-status-card" shadow="hover">
                 <template #header>
                   <div class="flex items-center justify-between">
                     <div class="flex items-center">
-                      <el-icon :color="headerIconColor" class="mr-2">
-                        <component :is="headerIcon"/>
+                      <el-icon :color="headerIconColor(currentDisplaySubmission)" class="mr-2">
+                        <CircleCheckFilled
+                            v-if="isEffectivelySubmitted(currentDisplaySubmission) && !currentDisplaySubmission.is_returned"/>
+                        <WarningFilled v-if="currentDisplaySubmission.is_returned"/>
+                        <InfoFilled
+                            v-if="currentDisplaySubmission.ai_grading_status === 'processing' || currentDisplaySubmission.ai_grading_status === 'pending'"/>
                       </el-icon>
-                      <span class="font-bold">{{ submissionStatusTitle }}</span>
+                      <span class="font-bold">我的当前提交状态: {{
+                          getSubmissionStatusText(currentDisplaySubmission)
+                        }}</span>
                     </div>
                     <el-button
-                        v-if="!isOverdue && !teacherHasGraded"
-                        type="warning"
+                        v-if="!isOverdue || currentDisplaySubmission.is_returned"
+                        type="primary"
                         plain
                         size="small"
-                        @click="prepareReSubmit">
-                      修改提交
+                        @click="prepareReSubmit"
+                        :disabled="submitting"
+                    >
+                      {{ currentDisplaySubmission.is_returned ? '修改并重新提交' : '编辑本次提交' }}
                     </el-button>
                   </div>
                 </template>
 
                 <div class="submission-info p-4 space-y-3">
-                  <p><span class="font-medium text-gray-600">我的提交时间:</span>
-                    {{ formatDateTime(mySubmissionDetails?.submit_time) }}</p>
+                  <p><span class="font-medium text-gray-600">提交时间:</span>
+                    {{ formatDateTime(currentDisplaySubmission.submit_time) }}</p>
 
-                  <div v-if="teacherHasGraded">
-                    <p><span class="font-medium text-gray-600">教师评分:</span>
-                      <el-tag :type="getScoreTagType(mySubmissionDetails.score, assignment.max_score)" effect="light"
-                              size="large" class="ml-2">
-                        {{ mySubmissionDetails.score }} / {{ assignment.max_score }}
-                      </el-tag>
-                    </p>
-                    <div v-if="mySubmissionDetails.teacher_comment" class="mt-2">
-                      <p class="font-medium text-gray-600 mb-1">教师评语:</p>
-                      <div class="comment-display-box markdown-content"
-                           v-html="renderMarkdown(mySubmissionDetails.teacher_comment)"></div>
-                    </div>
+                  <div v-if="getFinalScore(currentDisplaySubmission) !== null">
+                    <span class="font-medium text-gray-600">我的得分:</span>
+                    <el-tag :type="getScoreTagType(getFinalScore(currentDisplaySubmission))" effect="light" size="large"
+                            class="ml-2">
+                      {{ getFinalScore(currentDisplaySubmission) }} / {{ assignment.max_score }}
+                    </el-tag>
                   </div>
-                  <div v-else-if="mySubmissionDetails && mySubmissionDetails.is_returned">
-                    <el-alert title="作业被退回" type="warning" show-icon :closable="false">
-                      <p v-if="mySubmissionDetails.teacher_comment">教师说明: {{
-                          mySubmissionDetails.teacher_comment
-                        }}</p>
-                      <p v-else>教师已将您的作业退回，请修改后重新提交。</p>
-                    </el-alert>
+
+                  <div v-if="getFinalComment(currentDisplaySubmission)">
+                    <p class="font-medium text-gray-600 mb-1">教师/AI评语:</p>
+                    <div class="comment-box markdown-content"
+                         v-html="renderMarkdown(getFinalComment(currentDisplaySubmission))"></div>
                   </div>
 
                   <div
-                      v-if="mySubmissionDetails?.ai_grading_status && mySubmissionDetails.ai_grading_status !== 'pending'"
-                      class="mt-4 pt-3 border-t border-gray-200">
-                    <p class="font-medium text-gray-600 mb-2 text-sm flex items-center">
-                      <el-icon class="mr-1">
-                        <MagicStick/>
-                      </el-icon>
-                      AI辅助分析
-                      <el-tag :type="getAiStatusTagType(mySubmissionDetails.ai_grading_status)" size="small"
-                              class="ml-2">{{ getAiStatusText(mySubmissionDetails.ai_grading_status) }}
-                      </el-tag>
-                    </p>
-                    <template v-if="mySubmissionDetails.ai_grading_status === 'completed'">
-                      <p v-if="mySubmissionDetails.ai_score !== null">
-                        <span class="font-medium text-gray-500 text-xs">AI建议分数:</span>
-                        <el-tag type="info" effect="plain" size="small" class="ml-2">
-                          {{ mySubmissionDetails.ai_score }} / {{ assignment.max_score }}
-                        </el-tag>
-                      </p>
-                      <div v-if="mySubmissionDetails.ai_comment" class="mt-2">
-                        <p class="font-medium text-gray-500 text-xs mb-1">AI评语参考:</p>
-                        <div class="comment-display-box markdown-content bg-blue-50 text-sm"
-                             v-html="renderMarkdown(mySubmissionDetails.ai_comment)"></div>
-                      </div>
-                      <div v-if="mySubmissionDetails.ai_generated_similarity !== null" class="mt-2">
-                        <p class="font-medium text-gray-500 text-xs mb-1">AI生成内容疑似度:</p>
-                        <el-progress :percentage="Math.round(mySubmissionDetails.ai_generated_similarity * 100)"
-                                     :stroke-width="8"
-                                     :color="getSimilarityColor(mySubmissionDetails.ai_generated_similarity)"/>
-                      </div>
-                    </template>
-                    <div
-                        v-else-if="mySubmissionDetails.ai_grading_status === 'failed' || mySubmissionDetails.ai_grading_status === 'skipped'"
-                        class="mt-2">
-                      <el-alert :title="getAiStatusText(mySubmissionDetails.ai_grading_status)" type="info" show-icon
-                                :description="mySubmissionDetails.ai_comment || 'AI未能完成批改。'" :closable="false"/>
-                    </div>
+                      v-if="currentDisplaySubmission.ai_grading_status === 'completed' && typeof currentDisplaySubmission.ai_generated_similarity === 'number'">
+                    <span class="font-medium text-gray-600">AI分析-内容疑似度:</span>
+                    <el-progress
+                        :percentage="Math.round(currentDisplaySubmission.ai_generated_similarity * 100)"
+                        :stroke-width="10"
+                        :format="(percentage) => `${percentage}%`"
+                        style="width: 200px; display: inline-block; margin-left: 10px;"/>
+                  </div>
+                  <div v-if="currentDisplaySubmission.ai_grading_status === 'failed'">
+                    <span class="font-medium text-gray-600">AI批改:</span>
+                    <el-tag type="danger" effect="plain" class="ml-2">处理失败</el-tag>
+                    <p v-if="currentDisplaySubmission.ai_comment" class="text-xs text-gray-500 mt-1">详情:
+                      {{ currentDisplaySubmission.ai_comment }}</p>
+                  </div>
+                  <div v-if="currentDisplaySubmission.ai_grading_status === 'skipped'">
+                    <span class="font-medium text-gray-600">AI批改:</span>
+                    <el-tag type="warning" effect="plain" class="ml-2">已跳过</el-tag>
+                    <p v-if="currentDisplaySubmission.ai_comment" class="text-xs text-gray-500 mt-1">原因:
+                      {{ currentDisplaySubmission.ai_comment }}</p>
                   </div>
 
-                  <div class="files-list mt-4" v-if="mySubmissionDetails?.files?.length">
-                    <p class="font-medium text-gray-600 mb-2">我的提交文件:</p>
+
+                  <div class="files-list mt-4" v-if="currentDisplaySubmission.files?.length">
+                    <p class="font-medium text-gray-600 mb-2">我提交的文件:</p>
                     <div
-                        v-for="file in mySubmissionDetails.files"
+                        v-for="file in currentDisplaySubmission.files"
                         :key="file.id || file.name"
                         class="file-item">
-                      <el-icon>
-                        <Document/>
+                      <el-icon class="text-gray-500">
+                        <Paperclip/>
                       </el-icon>
-                      <span class="file-name-text">{{ file.name || file.original_name }}</span>
+                      <span class="text-sm">{{ file.name || file.original_name }}</span>
                     </div>
                   </div>
                 </div>
               </el-card>
             </template>
 
-            <el-card v-if="showSubmitForm" shadow="hover">
+            <el-card v-if="!isEffectivelySubmitted(currentDisplaySubmission) || editingCurrentSubmission" shadow="hover"
+                     class="submit-form-card">
               <template #header>
-                <div class="font-bold flex items-center">
+                <div class="font-bold text-lg flex items-center section-title">
                   <el-icon class="mr-2">
                     <UploadFilled/>
                   </el-icon>
-                  {{
-                    mySubmissionDetails && mySubmissionDetails.id && !mySubmissionDetails.is_returned ? '修改提交内容' : '提交我的作业'
-                  }}
+                  {{ editingCurrentSubmission ? '修改并提交作业' : '提交我的作业' }}
                 </div>
               </template>
+
               <el-form ref="formRef" :model="form" label-position="top">
-                <el-form-item label="作业附件" required>
+                <el-form-item label="作业附件 (必需)" prop="files">
                   <el-upload
+                      ref="uploadRef"
                       v-model:file-list="form.files"
-                      :action="submitUrl"
-                      :http-request="customHttpRequest"
+                      action="#"
                       :auto-upload="false"
                       :limit="3"
                       drag
                       multiple
                       :on-exceed="handleExceed"
-                      :on-change="handleFileSelectChange"
-                      :before-upload="handleBeforeUpload"
-                      class="w-full"
+                      :on-change="handleFileSelectionChange"
+                      :on-remove="handleFileRemove"
                   >
                     <el-icon class="el-icon--upload">
-                      <UploadFilled/>
+                      <Upload/>
                     </el-icon>
                     <div class="el-upload__text">
                       将文件拖到此处，或 <em>点击上传</em>
                     </div>
                     <template #tip>
                       <div class="el-upload__tip text-gray-500">
-                        * 最多可上传3个文件，每个文件不超过10MB，总大小不超过50MB。
+                        * 最多可上传3个文件，单个文件不超过10MB，总大小不超过50MB。支持常见代码/文本文件。
                       </div>
                     </template>
                   </el-upload>
                 </el-form-item>
-                <el-form-item label="备注说明 (可选)">
+
+                <el-form-item label="备注说明 (选填)">
                   <div class="quill-editor-wrapper">
                     <QuillEditor
                         v-model:content="form.comment"
                         contentType="html"
                         theme="snow"
                         :toolbar="editorToolbarOptions"
-                        placeholder="可以在这里添加对作业的补充说明..."
-                        style="height: 150px;"
+                        placeholder="可以在这里添加对作业的说明或心得体会..."
+                        style="min-height: 150px;"
                     />
                   </div>
                 </el-form-item>
-                <el-form-item class="mt-6 text-center">
+
+                <el-form-item style="padding-top: 20px; text-align:center;">
                   <el-button
                       type="primary"
                       @click="handleSubmit"
                       :loading="submitting"
-                      :disabled="isOverdue || form.files.length === 0"
+                      :disabled="isOverdue && !currentDisplaySubmission?.is_returned || form.files.length === 0"
                       size="large"
                   >
                     {{
-                      isOverdue ? '已截止' : (mySubmissionDetails && mySubmissionDetails.id && !mySubmissionDetails.is_returned ? '确认修改' : '确认提交')
+                      (isOverdue && !currentDisplaySubmission?.is_returned) ? '已截止无法提交' : (editingCurrentSubmission ? '确认修改并提交' : '确认提交')
                     }}
                   </el-button>
-                  <el-button @click="$router.push('/student/assignments')" size="large">取消</el-button>
+                  <el-button @click="cancelEditOrGoBack" size="large">
+                    {{ editingCurrentSubmission ? '取消修改' : '返回列表' }}
+                  </el-button>
                 </el-form-item>
               </el-form>
             </el-card>
           </template>
+          <el-empty v-else-if="!loading" description="作业信息加载失败或不存在。"/>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="历史提交记录" name="history" lazy>
+      <el-tab-pane label="历史提交记录" name="history" class="tab-pane-content">
         <submission-history-tab
-            v-if="activeTab === 'history'"
-            :submissions="assignment.submissions || []"
-            @load-submission-to-form="loadHistoryToForm"
-            @delete-submission="handleDeleteSubmission"
+            v-if="assignment && assignment.id"
+            :assignment-id="assignment.id"
+            :assignment-max-score="assignment.max_score"
+            :key="historyTabKey"
+            @view-submission-detail="handleViewHistoryDetail"
+            @resubmit-history="handleResubmitHistory"
         />
+        <el-empty v-else description="请先等待作业信息加载完毕。"/>
       </el-tab-pane>
     </el-tabs>
   </div>
 </template>
 
 <script setup>
-import {ref, onMounted, computed, watch} from 'vue'
+import {computed, nextTick, onMounted, ref} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import duration from 'dayjs/plugin/duration'
-import 'dayjs/locale/zh-cn'
+import 'dayjs/locale/zh-cn' // Ensure locale is imported
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {
   ArrowLeft,
   Calendar,
-  Clock,
-  Trophy,
-  User,
-  Document,
-  UploadFilled,
   CircleCheckFilled,
-  WarningFilled,
-  MagicStick,
-  InfoFilled
-} from '@element-plus/icons-vue' // Added icons
-import {fetchAssignmentInfo, submitAssignmentWithFiles, updateSubmission, deleteDrawSubmission} from '@/api/student.js' // updateSubmission API
+  Clock,
+  Document,
+  InfoFilled,
+  Paperclip,
+  Trophy,
+  Upload,
+  UploadFilled,
+  User,
+  WarningFilled
+} from '@element-plus/icons-vue'
+import {fetchAssignmentInfo} from '@/api/student.js' // updateSubmission 对应 PATCH
 import {QuillEditor} from '@vueup/vue-quill'
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-// import hljs from 'highlight.js'; // For markdown-it-highlightjs
-import 'highlight.js/styles/atom-one-dark.css'; // Or your preferred theme
-import SubmissionHistoryTab from '@/views/student/SubmissionHistoryTab.vue' // Ensure this component exists and is correctly imported
+
+import SubmissionHistoryTab from '@/views/student/SubmissionHistoryTab.vue' // 确保路径正确
 
 dayjs.extend(relativeTime)
-dayjs.extend(duration)
 dayjs.locale('zh-cn')
 
-const props = defineProps({id: {type: [String, Number], required: true}}) // assignmentId
+const props = defineProps({id: {type: [String, Number], required: true}})
 const router = useRouter()
 const route = useRoute()
 
 const activeTab = ref('edit')
 const loading = ref(true)
 const loadError = ref('')
-const assignment = ref({}) // 作业本身的信息
-const mySubmissionDetails = ref(null) // 学生对该作业的最新一次有效提交详情（或被退回的）
+const assignment = ref({}) // 存储作业详情及其所有提交记录
+const currentDisplaySubmission = ref(null) // 当前用于在“编辑”tab页显示的提交（通常是最新的有效提交）
 
 const formRef = ref()
+const uploadRef = ref() // Ref for el-upload
 const form = ref({
-  files: [], // 用于el-upload的fileList
+  files: [], // 用于el-upload的v-model:file-list
+  rawFiles: [], // 存储实际的File对象
   comment: '',
-  // title: '' // 学生通常不修改作业标题，而是提交内容
+  title: '', // 提交的标题，可以考虑从作业标题预填充
 })
+
 const submitting = ref(false)
+const editingCurrentSubmission = ref(false) // 标记是否正在编辑当前提交
+const historyTabKey = ref(0) // 用于强制刷新历史记录组件
 
-// Markdown-it instance
-const md = new MarkdownIt({
-  html: true, breaks: true, linkify: true, typographer: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return '<pre class="hljs"><code>' +
-            hljs.highlight(str, {language: lang, ignoreIllegals: true}).value +
-            '</code></pre>';
-      } catch (__) {
-      }
-    }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
-  }
-})
-
-const renderMarkdown = (markdownText) => {
-  if (!markdownText) return '';
-  const renderedHTML = md.render(markdownText);
-  return DOMPurify.sanitize(renderedHTML);
-};
+const md = new MarkdownIt({html: true, linkify: true, typographer: true});
+const renderMarkdown = (text) => text ? DOMPurify.sanitize(md.render(text)) : '';
 
 const editorToolbarOptions = [
-  ['bold', 'italic', 'underline'],
+  ['bold', 'italic', 'underline'], ['blockquote', 'code-block'],
   [{'list': 'ordered'}, {'list': 'bullet'}],
-  ['link', 'code-block']
+  [{'header': [1, 2, 3, false]}],
+  ['link'], ['clean']
 ];
+
 
 const isOverdue = computed(() => {
   if (!assignment.value?.due_date) return false;
   return dayjs(assignment.value.due_date).isBefore(dayjs());
 });
 
-// 学生是否已提交且未被退回
-const isEffectivelySubmitted = (submission) => {
-  return submission && submission.id && submission.submitted && !submission.is_returned;
-};
-
-// 教师是否已评分
-const teacherHasGraded = computed(() => {
-  return mySubmissionDetails.value &&
-      mySubmissionDetails.value.score !== null &&
-      typeof mySubmissionDetails.value.score !== 'undefined' &&
-      !mySubmissionDetails.value.is_returned;
-});
-
-
-// 控制提交表单的显示：
-// 1. 作业未截止，且 (学生从未提交过 OR 学生提交过但被退回了)
-// 2. 或者，教师允许在评分前修改 (当前逻辑是评分前可以修改，通过prepareReSubmit触发)
-const showSubmitForm = computed(() => {
-  if (isOverdue.value && !(mySubmissionDetails.value && mySubmissionDetails.value.id && !teacherHasGraded.value)) return false; // 如果已截止，只有在“修改”状态才能显示
-  if (teacherHasGraded.value) return false; // 教师已评分，不能再提交/修改
-  return !isEffectivelySubmitted(mySubmissionDetails.value) || isPreparingReSubmit.value;
-});
-const isPreparingReSubmit = ref(false); // 用于标记用户点击了“修改提交”
-
-const prepareReSubmit = () => {
-  isPreparingReSubmit.value = true;
-  // 将当前提交内容填充到表单（如果需要）
-  if (mySubmissionDetails.value) {
-    form.value.comment = mySubmissionDetails.value.content || '';
-    // 文件需要用户重新选择，但可以提示已上传的文件
-    form.value.files = []; // 清空待上传列表
-    if (mySubmissionDetails.value.files && mySubmissionDetails.value.files.length > 0) {
-      ElMessage.info(`您之前已上传 ${mySubmissionDetails.value.files.length} 个文件，若需保留请重新选择，否则将被新文件覆盖。`);
-    }
-  }
-};
-
-
-const submissionStatusTitle = computed(() => {
-  if (teacherHasGraded.value) return "教师已批改";
-  if (mySubmissionDetails.value?.is_returned) return "作业已退回";
-  if (isEffectivelySubmitted(mySubmissionDetails.value)) return "我的提交详情";
-  return "提交状态";
-});
-
-const headerIcon = computed(() => {
-  if (teacherHasGraded.value) return CircleCheckFilled;
-  if (mySubmissionDetails.value?.is_returned) return WarningFilled;
-  if (isEffectivelySubmitted(mySubmissionDetails.value)) return InfoFilled;
-  return UploadFilled;
-});
-
-const headerIconColor = computed(() => {
-  if (teacherHasGraded.value) return '#67C23A'; // success
-  if (mySubmissionDetails.value?.is_returned) return '#E6A23C'; // warning
-  if (isEffectivelySubmitted(mySubmissionDetails.value)) return '#409EFF'; // primary
-  return '#909399'; // info
-});
-
-
 const formattedDescription = computed(() => {
-  if (!assignment.value?.description) return '<p class="text-gray-500">暂无作业描述。</p>';
+  if (!assignment.value?.description) return '';
   return renderMarkdown(assignment.value.description);
 });
 
@@ -431,48 +362,72 @@ const remainingTime = computed(() => {
   const now = dayjs();
   const due = dayjs(assignment.value.due_date);
   if (due.isBefore(now)) return '已截止';
-
-  const durationObj = dayjs.duration(due.diff(now));
-  const days = Math.floor(durationObj.asDays());
-  const hours = durationObj.hours();
-  const minutes = durationObj.minutes();
-
-  if (days > 0) return `${days}天 ${hours}小时`;
-  if (hours > 0) return `${hours}小时 ${minutes}分钟`;
-  if (minutes > 0) return `${minutes}分钟`;
-  return '即将截止';
+  return due.fromNow(true); // 'xx 分钟/小时/天'
 });
 
-const getScoreTagType = (score, maxScore = 100) => {
+// 判断一个提交是否是“有效”的，即已提交且未被退回
+const isEffectivelySubmitted = (submission) => {
+  return submission && submission.submitted && !submission.is_returned;
+};
+
+const getFinalScore = (submission) => {
+  if (!submission) return null;
+  if (submission.score !== null && typeof submission.score !== 'undefined') {
+    return submission.score;
+  }
+  if (submission.ai_grading_status === 'completed' && submission.ai_score !== null && typeof submission.ai_score !== 'undefined') {
+    return submission.ai_score;
+  }
+  return null;
+};
+
+const getFinalComment = (submission) => {
+  if (!submission) return '';
+  if (submission.teacher_comment) {
+    return submission.teacher_comment;
+  }
+  if (submission.ai_grading_status === 'completed' && submission.ai_comment) {
+    return submission.ai_comment;
+  }
+  return '';
+};
+
+const getSubmissionStatusText = (submission) => {
+  if (!submission) return '未提交';
+  const finalScore = getFinalScore(submission);
+
+  if (submission.is_returned) return '已退回 (待重交)';
+  if (isEffectivelySubmitted(submission)) {
+    if (finalScore !== null) return `已评分 (${finalScore})`;
+    if (submission.ai_grading_status === 'processing') return 'AI批改中...';
+    if (submission.ai_grading_status === 'pending') return '已提交 (等待AI批改)';
+    return '已提交 (待批改)';
+  }
+  // 如果不是有效提交（例如仅保存但未标记submitted，或ai_grading_status是skipped/failed且无教师评分）
+  // 或者已截止但未提交过
+  if (isOverdue.value) return '已截止 (未提交)';
+  return '待提交';
+};
+
+const getScoreTagType = (score) => {
   if (score === null || typeof score === 'undefined') return 'info';
-  const percentage = (parseFloat(score) / parseFloat(maxScore)) * 100;
-  if (percentage >= 85) return 'success';
-  if (percentage >= 70) return 'primary';
-  if (percentage >= 60) return 'warning';
+  const numericScore = parseFloat(score);
+  const maxScore = parseFloat(assignment.value?.max_score || 100);
+  if (numericScore >= maxScore * 0.85) return 'success';
+  if (numericScore >= maxScore * 0.6) return 'warning';
   return 'danger';
 };
 
-const getAiStatusText = (status) => {
-  const map = {
-    pending: '待处理', processing: 'AI处理中...', completed: 'AI分析完成',
-    failed: 'AI分析失败', skipped: '不适用AI分析',
-  };
-  return map[status] || '未知AI状态';
-};
-
-const getAiStatusTagType = (status) => {
-  const map = {
-    pending: 'info', processing: 'primary', completed: 'success',
-    failed: 'danger', skipped: 'warning',
-  };
-  return map[status] || 'info';
-};
-
-const getSimilarityColor = (similarity) => {
-  if (similarity === null || typeof similarity === 'undefined') return '#909399';
-  if (similarity >= 0.7) return '#F56C6C';
-  if (similarity >= 0.4) return '#E6A23C';
-  return '#67C23A';
+const headerIconColor = (submission) => {
+  if (!submission) return '#909399'; // Info for '未提交'
+  if (submission.is_returned) return '#E6A23C'; // Warning
+  if (isEffectivelySubmitted(submission)) {
+    const finalScore = getFinalScore(submission);
+    if (finalScore !== null) return '#67C23A'; // Success
+    if (submission.ai_grading_status === 'processing' || submission.ai_grading_status === 'pending') return '#409EFF'; // Primary
+    return '#67C23A'; // Success for submitted but not yet graded by AI/Teacher
+  }
+  return '#909399';
 };
 
 
@@ -481,187 +436,192 @@ const formatDateTime = (dateString) => {
   return dayjs(dateString).format('YYYY-MM-DD HH:mm:ss');
 };
 
-const handleFileSelectChange = (file, fileList) => {
-  // fileList已经是el-upload内部维护的，这里主要用于触发校验或自定义逻辑
-  form.value.files = fileList; // 确保我们的form.files与el-upload同步
-};
+const handleFileSelectionChange = (file, fileList) => {
+  // fileList是el-upload内部维护的列表，包含 File 对象
+  // 我们需要将实际的File对象存储起来用于FormData
+  form.value.rawFiles = fileList.map(f => f.raw).filter(f => f instanceof File);
 
-const handleBeforeUpload = (rawFile) => {
-  const allowedTypes = ['text/plain', 'text/x-python', 'text/html', 'application/javascript', 'application/x-sh', 'application/json', 'text/markdown', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf', 'image/jpeg', 'image/png', 'application/zip', 'application/x-rar-compressed'];
-  const maxSize = 10 * 1024 * 1024; // 10MB per file
+  // 文件大小检查 (单个文件)
+  const singleFileMaxSize = 10 * 1024 * 1024; // 10MB
+  if (file.size > singleFileMaxSize) {
+    ElMessage.warning(`文件 ${file.name} 大小超过10MB限制`);
+    // 从列表中移除超大文件
+    form.value.files = form.value.files.filter(f => f.uid !== file.uid);
+    form.value.rawFiles = form.value.rawFiles.filter(f => f.name !== file.name || f.size !== file.size); // 简单匹配
+    uploadRef.value?.handleRemove(file); // 调用el-upload的移除方法更新UI
+    return false;
+  }
 
-  // if (!allowedTypes.includes(rawFile.type)) { // 文件类型检查可以更宽松，后端会有严格校验
-  //   ElMessage.error(`文件类型不支持: ${rawFile.name}`);
-  //   return false;
-  // }
-  if (rawFile.size > maxSize) {
-    ElMessage.error(`文件 ${rawFile.name} 大小超过10MB限制!`);
+  // 总文件大小检查
+  const totalSize = form.value.rawFiles.reduce((sum, f) => sum + f.size, 0);
+  const totalMaxSize = 50 * 1024 * 1024; // 50MB
+  if (totalSize > totalMaxSize) {
+    ElMessage.warning('所有文件总大小不能超过50MB');
+    // 移除刚添加的文件
+    form.value.files = form.value.files.filter(f => f.uid !== file.uid);
+    form.value.rawFiles = form.value.rawFiles.filter(f => f.name !== file.name || f.size !== file.size);
+    uploadRef.value?.handleRemove(file);
     return false;
   }
   return true;
 };
 
-const handleExceed = (files) => {
-  ElMessage.warning(`当前限制选择 3 个文件，本次选择了 ${files.length} 个文件，共选择了 ${files.length + form.value.files.length} 个文件`);
-};
-
-// 自定义上传方法，覆盖el-upload的默认行为，因为我们是手动构建FormData
-const customHttpRequest = ({file, onSuccess, onError, onProgress}) => {
-  // 我们不在这里单独上传，而是在handleSubmit中统一处理
-  // 这个方法必须存在以阻止el-upload的默认上传行为
-  // 可以简单地调用onSuccess()来表示文件已“处理”（加入列表）
-  onSuccess();
+const handleFileRemove = (file, fileList) => {
+  form.value.rawFiles = fileList.map(f => f.raw).filter(f => f instanceof File);
 };
 
 
-const handleSubmit = async () => {
-  if (!formRef.value) return;
-
-  if (form.value.files.length === 0) {
-    ElMessage.warning('请至少选择一个文件进行提交。');
-    return;
-  }
-
-  let totalSize = 0;
-  for (const file of form.value.files) {
-    if (!file.raw) { // el-upload的fileList中，新选的文件有raw属性
-      ElMessage.error('文件列表中包含无效文件，请重新选择。');
-      return;
-    }
-    totalSize += file.raw.size;
-  }
-  if (totalSize > 50 * 1024 * 1024) { // 50MB total
-    ElMessage.error('上传文件总大小不能超过50MB。');
-    return;
-  }
-
-  if (isOverdue.value && !isPreparingReSubmit.value && !(mySubmissionDetails.value && mySubmissionDetails.value.is_returned)) {
-    ElMessage.error('该作业已截止，无法提交。');
-    return;
-  }
-
-  try {
-    await ElMessageBox.confirm(
-        `确定要${mySubmissionDetails.value?.id && !mySubmissionDetails.value?.is_returned ? '修改并覆盖原提交' : '提交新作业'}吗？`,
-        '提交确认',
-        {confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning'}
-    );
-  } catch {
-    return; // User cancelled
-  }
-
-  const fd = new FormData();
-  fd.append("assignment", props.id); // assignment ID
-  fd.append('title', assignment.value.title); // Use original assignment title or let user set one
-  fd.append('content', form.value.comment || ''); // Student's comment/text content
-  form.value.files.forEach(f => {
-    if (f.raw) fd.append('files', f.raw, f.name); // Make sure to append raw file
-  });
-
-  submitting.value = true;
-  try {
-    let response;
-    if (mySubmissionDetails.value?.id && isPreparingReSubmit.value) { // 如果是修改提交 (之前点击了“修改提交”按钮)
-      // 后端需要支持PATCH方法来更新提交，或允许重新POST（并处理旧提交）
-      // 假设后端 `submitAssignmentWithFiles` 或类似接口能处理覆盖逻辑
-      // 或者，我们先删除旧的，再创建新的（如果业务逻辑如此）
-      // 这里我们用 updateSubmission，它需要 submission ID
-      // 确保 updateSubmission API 能处理 FormData
-      // response = await updateSubmission(mySubmissionDetails.value.id, fd); // 假设 updateSubmission 接受 FormData
-      // 鉴于后端AI逻辑在create时触发，我们通常建议学生“撤回再提交”或后端支持POST覆盖
-      // 如果是简单的覆盖，可以直接调用创建接口，后端判断并处理
-      ElMessage.info("正在尝试覆盖提交..."); // 提示用户
-      response = await submitAssignmentWithFiles(props.id, fd); // 重新提交（后端处理覆盖）
-    } else { // 新提交
-      response = await submitAssignmentWithFiles(props.id, fd);
-    }
-    ElMessage.success('作业提交成功！');
-    // 刷新数据
-    await loadInitialData();
-    activeTab.value = 'history'; // 提交后切换到历史记录
-    isPreparingReSubmit.value = false; // 重置修改状态
-  } catch (err) {
-    console.error("Submit error:", err.response || err);
-    ElMessage.error(err.response?.data?.detail || '提交失败，请检查网络或文件。');
-  } finally {
-    submitting.value = false;
-  }
+const handleExceed = () => {
+  ElMessage.warning('最多只能上传3个文件');
 };
 
-
-const loadInitialData = async () => {
+const loadAssignmentData = async () => {
   loading.value = true;
   loadError.value = '';
   try {
-    const res = await fetchAssignmentInfo(props.id); // 这个接口应该返回作业信息及该学生的所有历史提交
-    assignment.value = res.data; // { ...assignmentDetails, submissions: [...] }
+    const res = await fetchAssignmentInfo(props.id); // 这个API现在应该返回作业详情和所有提交记录
+    assignment.value = res.data;
     document.title = `${assignment.value.title || '作业'} - 提交`;
 
-    // 找到学生当前有效的提交（最新的，或未被退回的，或教师已评分的）
-    // 后端返回的 assignment.submissions 应该是该学生对此作业的所有提交记录
+    // 确定当前显示的提交 (通常是最新的有效提交，或退回的提交)
     if (assignment.value.submissions && assignment.value.submissions.length > 0) {
-      // 通常取最后一次提交作为当前要显示的，除非有特殊逻辑
-      // 按提交时间降序排序
-      const sortedSubmissions = [...assignment.value.submissions].sort((a, b) => dayjs(b.submit_time).valueOf() - dayjs(a.submit_time).valueOf());
-      mySubmissionDetails.value = sortedSubmissions[0]; // 最新一次提交
+      // 优先找未被退回的最新提交，其次是最新被退回的提交
+      const nonReturned = assignment.value.submissions.filter(s => !s.is_returned).sort((a, b) => dayjs(b.submit_time).valueOf() - dayjs(a.submit_time).valueOf());
+      const returned = assignment.value.submissions.filter(s => s.is_returned).sort((a, b) => dayjs(b.submit_time).valueOf() - dayjs(a.submit_time).valueOf());
+
+      currentDisplaySubmission.value = nonReturned.length > 0 ? nonReturned[0] : (returned.length > 0 ? returned[0] : null);
+
+      // 如果当前显示的提交是被退回的，则自动进入编辑模式
+      if (currentDisplaySubmission.value && currentDisplaySubmission.value.is_returned && !isOverdue.value) {
+        prepareReSubmit();
+      }
+
     } else {
-      mySubmissionDetails.value = null;
+      currentDisplaySubmission.value = null;
     }
 
-    // 根据mySubmissionDetails设置表单初始状态
-    if (mySubmissionDetails.value) {
-      form.value.comment = mySubmissionDetails.value.content || '';
-      // files 不直接从 mySubmissionDetails.value.files 填充，因为它们是已上传文件的元数据，不是 File 对象
-      // 用户需要重新选择文件进行修改
-      form.value.files = [];
-    } else {
-      form.value.comment = '';
-      form.value.files = [];
-    }
+    // 刷新历史记录tab
+    historyTabKey.value++;
 
   } catch (err) {
-    console.error("Error loading assignment data:", err.response || err);
-    loadError.value = err.response?.data?.detail || '无法加载作业信息，请稍后重试。';
-    ElMessage.error(loadError.value);
+    console.error("Error loading assignment data:", err);
+    loadError.value = err.response?.data?.detail || err.message || '加载作业信息失败';
+    if (err.response?.status === 404) {
+      loadError.value = '未找到该作业或您没有权限访问。';
+    }
   } finally {
     loading.value = false;
   }
 };
 
-
-const loadHistoryToForm = (submissionData) => {
-  mySubmissionDetails.value = submissionData; // 更新当前显示的提交详情
-  form.value.comment = submissionData.content || '';
-  form.value.files = []; // 清空待上传文件列表
-  // 提示用户文件需要重新选择
-  ElMessage.info('已载入历史提交的文本内容。如需修改附件，请重新选择文件。');
-  isPreparingReSubmit.value = true; // 进入修改模式
-  activeTab.value = 'edit'; // 切换到编辑Tab
+const prepareReSubmit = () => {
+  if (currentDisplaySubmission.value) {
+    form.value.title = currentDisplaySubmission.value.title || ''; // 实际上学生提交的title可能没用
+    form.value.comment = currentDisplaySubmission.value.content || ''; // 假设旧的content是学生评语
+    form.value.files = []; // 清空旧文件列表，要求学生重新上传
+    form.value.rawFiles = [];
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles(); // 清空el-upload组件中的文件
+    }
+  } else { // 如果没有当前提交 (例如首次提交)
+    form.value.title = assignment.value?.title || '';
+    form.value.comment = '';
+    form.value.files = [];
+    form.value.rawFiles = [];
+  }
+  editingCurrentSubmission.value = true; // 进入编辑/提交表单的显示状态
 };
 
-const handleDeleteSubmission = async (submissionId) => {
-  try {
-    await ElMessageBox.confirm('确定要撤回这条提交记录吗？撤回后不可恢复。', '撤回确认', {
-      confirmButtonText: '确认撤回', cancelButtonText: '取消', type: 'warning',
-    });
-    await deleteDrawSubmission(submissionId);
-    ElMessage.success('提交已成功撤回！');
-    await loadInitialData(); // 重新加载数据以更新列表和状态
-    // 如果撤回的是当前显示的 mySubmissionDetails，则清空它
-    if (mySubmissionDetails.value && mySubmissionDetails.value.id === submissionId) {
-      mySubmissionDetails.value = null;
-      isPreparingReSubmit.value = false; // 退出修改模式
+const cancelEditOrGoBack = () => {
+  if (editingCurrentSubmission.value) {
+    editingCurrentSubmission.value = false; // 取消编辑，回到查看状态（如果之前有提交）
+    form.value.files = []; // 清空选择
+    form.value.rawFiles = [];
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles();
     }
-  } catch (err) {
-    if (err !== 'cancel') { // 用户点击取消时，confirm会reject 'cancel'
-      console.error("Error deleting submission:", err.response || err);
-      ElMessage.error(err.response?.data?.detail || '撤回提交失败。');
-    }
+  } else {
+    router.push('/student/assignments');
   }
 };
 
+const handleSubmit = async () => {
+  if (form.value.rawFiles.length === 0) {
+    ElMessage.warning('请至少选择一个文件提交');
+    return;
+  }
+  if (isOverdue.value && !(currentDisplaySubmission.value?.is_returned)) {
+    ElMessage.error('该作业已截止，无法提交。如需补交，请联系老师申请。');
+    return;
+  }
 
-onMounted(loadInitialData);
+  try {
+    await ElMessageBox.confirm(
+        `确定要${editingCurrentSubmission.value && currentDisplaySubmission.value ? '修改并' : ''}提交作业吗？`,
+        '提交确认', {confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning'}
+    );
+  } catch {
+    return; // 用户取消
+  }
+
+  const fd = new FormData();
+  // assignmentId 是从 props.id 获取的，是作业本身的ID
+  fd.append("assignment", props.id); // 后端 AssignmentSubmissionView create 时需要 assignment ID
+  fd.append('title', form.value.title || `${assignment.value.title} - 提交`); // 学生提交的标题
+  fd.append('content', form.value.comment || ''); // 学生提交的备注/内容
+
+  form.value.rawFiles.forEach(file => {
+    fd.append('files', file); // 'files' 对应后端 request.FILES.getlist('files')
+  });
+
+  submitting.value = true;
+  try {
+    // 如果 currentDisplaySubmission 存在且 editingCurrentSubmission 为 true，说明是“修改提交”
+    // 实际上，后端的 create 逻辑处理了覆盖，所以这里统一调用 create
+    // 你的后端 AssignmentSubmissionView.create 已经处理了删除旧提交的逻辑，所以总是 "创建" 新的
+    await stuRequest.post(`/assignments/${props.id}/submissions/`, fd, { // 使用 /cou/student 前缀的 stuRequest
+      headers: {'Content-Type': 'multipart/form-data'}
+    });
+    ElMessage.success('作业提交成功！');
+    editingCurrentSubmission.value = false; // 退出编辑模式
+    form.value.files = []; // 清空文件列表
+    form.value.rawFiles = [];
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles();
+    }
+    await loadAssignmentData(); // 重新加载数据以显示最新提交和AI状态
+  } catch (err) {
+    console.error("Submission error:", err.response || err);
+    ElMessage.error(err.response?.data?.detail || '作业提交失败，请稍后重试。');
+  } finally {
+    submitting.value = false;
+  }
+};
+
+// 从历史记录子组件触发的事件
+const handleViewHistoryDetail = (submissionDetail) => {
+  // 当用户在历史记录中点击查看某个旧提交时，我们可以更新 currentDisplaySubmission
+  // 使得主编辑区域显示这个旧提交的详细信息，但保持表单为不可编辑状态
+  currentDisplaySubmission.value = submissionDetail;
+  editingCurrentSubmission.value = false; // 确保不是编辑模式
+  activeTab.value = 'edit'; // 切换回编辑/查看tab
+  nextTick(() => {
+    window.scrollTo({top: 0, behavior: 'smooth'}); // 滚动到页面顶部
+  });
+};
+
+const handleResubmitHistory = (submissionToResubmit) => {
+  // 当用户从历史记录选择一个提交来“重新提交”
+  currentDisplaySubmission.value = submissionToResubmit; // 可以用来预填一些信息，或者只是作为参考
+  prepareReSubmit(); // 进入编辑模式，表单内容可以基于 submissionToResubmit 预设
+  activeTab.value = 'edit';
+  nextTick(() => {
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  });
+};
+
+
+onMounted(loadAssignmentData);
 
 </script>
 
@@ -669,163 +629,205 @@ onMounted(loadInitialData);
 .assignment-container {
   max-width: 900px;
   margin: 0 auto;
-  background-color: #fff;
+  background-color: #f9fafb;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.page-actions {
+  padding: 10px 0;
+}
+
+.assignment-details-card, .submission-status-card, .submit-form-card {
+  border: 1px solid #e4e7ed;
+  background-color: #fff;
 }
 
 .assignment-header {
   text-align: center;
   padding-bottom: 16px;
-  /* margin-bottom: 20px; */
+}
+
+.assignment-header .text-gray-500 {
+  color: #909399;
 }
 
 .info-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Responsive cards */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
   margin: 24px 0;
 }
 
 .info-card {
-  border-radius: 8px;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.info-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
 }
 
 .info-card-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 16px; /* More vertical padding */
+  padding: 20px 10px;
   text-align: center;
 }
 
 .info-icon {
-  font-size: 28px; /* Larger icon */
-  color: var(--el-color-primary);
-  margin-bottom: 12px;
+  font-size: 28px;
+  margin-bottom: 10px;
 }
 
+.info-icon.text-blue-500 {
+  color: #409EFF;
+}
+
+.info-icon.text-green-500 {
+  color: #67C23A;
+}
+
+.info-icon.text-purple-500 {
+  color: #a06eff;
+}
+
+.info-icon.text-orange-500 {
+  color: #E6A23C;
+}
+
+
 .info-title {
-  font-size: 13px; /* Smaller title */
-  color: #a0aec0; /* Lighter color */
+  font-size: 13px;
+  color: #909399;
   margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .info-value {
-  font-size: 16px; /* Adjusted size */
-  font-weight: 500; /* Medium weight */
-  color: #2d3748; /* Darker value */
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
 }
 
-.text-danger {
+.info-value.text-red-600 {
   color: #F56C6C;
 }
 
-.description-box, .comment-display-box {
-  line-height: 1.7; /* Improved readability */
+.section-title {
+  color: #303133;
+  border-bottom: 2px solid var(--el-color-primary-light-5);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+.description-box {
+  line-height: 1.7;
+  color: #303133;
   font-size: 14px;
-  color: #4a5568; /* Slightly darker text */
-  word-break: break-word;
+  padding: 16px;
+  background-color: #fdfdfd;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  white-space: pre-wrap; /* 保留换行和空格 */
 }
 
-.comment-display-box {
-  background-color: #f8fafc; /* Very light grey for comments */
+.markdown-content :deep(p) {
+  margin-bottom: 0.5em;
+}
+
+/* 调整 Markdown 内部元素间距 */
+
+
+.submission-status-card .el-card__header {
+  background-color: #f5f7fa;
+}
+
+.submission-info {
+  font-size: 14px;
+  color: #606266;
+}
+
+.submission-info .font-medium {
+  color: #303133;
+}
+
+.comment-box {
+  background-color: #f9fafb;
+  border: 1px solid #e4e7ed;
   padding: 12px 15px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
   min-height: 60px;
+  white-space: pre-wrap; /* 保留换行和空格 */
 }
 
-.bg-blue-50 {
-  background-color: #eff6ff;
+.markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3) {
+  margin-top: 0.8em;
+  margin-bottom: 0.4em;
 }
 
-/* Example for AI comment background */
 
+.files-list {
+  margin-top: 12px;
+}
 
 .file-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px; /* Adjusted padding */
-  border-radius: 6px;
-  background-color: #f7fafc; /* Lighter background */
-  margin-bottom: 8px;
-  border: 1px solid #e2e8f0; /* Light border */
-  font-size: 14px;
-  color: #4a5568;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background-color: #f0f2f5;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #303133;
 }
 
-.file-name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.file-item .el-icon {
+  font-size: 16px;
 }
 
-.quill-editor-wrapper { /* Added wrapper for better styling control */
+.submit-form-card .el-card__header {
+  background-color: #f5f7fa;
+}
+
+.quill-editor-wrapper {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  overflow: hidden; /* To ensure border-radius applies to child toolbar/container */
+  overflow: hidden;
 }
 
 :deep(.ql-toolbar.ql-snow) {
+  border-bottom: 1px solid #dcdfe6;
   border-top-left-radius: 4px;
   border-top-right-radius: 4px;
-  border-bottom: 1px solid #dcdfe6; /* Add border below toolbar */
 }
 
 :deep(.ql-container.ql-snow) {
   border-bottom-left-radius: 4px;
   border-bottom-right-radius: 4px;
-  font-size: 14px; /* Ensure editor font size */
-  line-height: 1.6;
-}
-
-:deep(.ql-editor) {
-  min-height: 120px; /* Adjusted min-height */
-  padding: 10px 12px;
-}
-
-.el-upload__tip {
-  line-height: 1.4;
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-/* Markdown content styling (already provided, ensure it's applied correctly) */
-.markdown-content :deep(pre) {
-  background-color: #2d2d2d;
-  color: #f8f8f2;
-  padding: 1em;
-  overflow: auto;
-  border-radius: 5px;
-  margin: 1em 0;
-  font-family: 'Courier New', Courier, monospace;
-}
-
-.markdown-content :deep(code:not(.hljs)) {
-  background-color: #eef1f5;
-  color: #c0341d;
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
-.submission-info p {
-  margin-bottom: 8px;
   font-size: 14px;
-  color: #333;
+  min-height: 120px;
 }
 
-.submission-info .font-medium {
-  color: #555;
+:deep(.el-tabs__header) {
+  margin-bottom: 0; /* 移除tabs header下方的默认margin */
 }
+
+.tab-pane-content {
+  padding-top: 20px; /* 为tab内容区域增加上边距 */
+}
+
+.custom-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none; /* 移除 Element Plus Tabs 默认的下边框 */
+}
+
+.custom-tabs :deep(.el-tabs__item) {
+  font-size: 16px;
+  padding: 0 25px; /* 增加 tab 的横向 padding */
+  height: 50px; /* 增加 tab 的高度 */
+  line-height: 50px;
+}
+
+.custom-tabs :deep(.el-tabs__active-bar) {
+  height: 3px; /* 加粗激活状态的下划线 */
+}
+
 </style>
