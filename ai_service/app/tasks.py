@@ -2,6 +2,7 @@
 # import asyncio # MODIFIED: Removed asyncio import
 import logging
 
+from app.core.config import settings
 from app.core.llm_router import llm_router_instance
 from app.llm_providers.base_provider import LLMRequest, Message as LLMMessage
 from celery_app import celery_app
