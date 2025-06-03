@@ -48,8 +48,11 @@ def generate_ai_response_task(self, ai_payload: dict):  # 参数名修改为 ai_
             llm_router_instance.get_llm_response(llm_req, provider_name=provider_name)
         )
 
-        logger.info(f"Celery task processed. Result: {result_model_instance.model_dump(exclude_none=True)}")
-        return result_model_instance.model_dump()
+        # 添加详细日志
+        logger.info(f"LLM响应已获取，准备返回结果")
+        result_dict = result_model_instance.model_dump()
+        logger.info(f"结果已序列化为字典")
+        return result_dict
 
     except ValueError as ve:
         logger.error(f"Celery task failed due to ValueError: {ve}", exc_info=True)
