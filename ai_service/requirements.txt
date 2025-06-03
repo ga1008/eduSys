@@ -7,3 +7,4 @@ python-dotenv
 httpx # openai SDK >1.0 需要
 eventlet
 pydantic_settings
+beautifulsoup4

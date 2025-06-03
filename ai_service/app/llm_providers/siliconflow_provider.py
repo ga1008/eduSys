@@ -38,3 +38,23 @@ class SiliconFlowProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"[{self.provider_name}] Error generating response: {e}")
             return LLMResponse(error=str(e), provider_name=self.provider_name, model_used=model_to_use)
+
+# 测试
+if __name__ == "__main__":
+    import asyncio
+
+    async def test_siliconflow():
+        provider = SiliconFlowProvider()
+        request = LLMRequest(
+            messages=[Message(role="user", content="Hello, 你好吗?")],
+            model="Pro/deepseek-ai/DeepSeek-V3",
+            use_reasoning_model=False,
+            stream=False,
+            timeout=30,
+            max_tokens=100,
+            temperature=0.7
+        )
+        response = await provider.generate_response(request)
+        print(response)
+
+    asyncio.run(test_siliconflow())
