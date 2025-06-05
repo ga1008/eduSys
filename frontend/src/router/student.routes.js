@@ -32,7 +32,24 @@ export default [
         component: () => import('@/views/student/CourseDetail.vue'),
         props: true,
         meta: { title: '课程详情' },
-        // ... 可能的子路由，如课程内的作业、资料列表
+        children: [
+          {
+            path: '', // 默认显示课程信息，通过 tab 控制
+            redirect: to => ({ name: 'StudentCourseDetail', params: to.params, query: { tab: 'info' }}) // 可选：或不设重定向，由 tab 默认值控制
+          },
+          {
+            path: 'assignments',
+            name: 'StudentCourseAssignments', // 用于 <router-view name="StudentCourseAssignmentsView">
+            component: () => import('@/views/student/AssignmentList.vue'), // 假设是这个组件
+            meta: { title: '课程作业' }
+          },
+          {
+            path: 'materials',
+            name: 'StudentCourseMaterials', // 用于 <router-view name="StudentCourseMaterialsView">
+            component: () => import('@/views/student/MaterialList.vue'), // 假设是这个组件
+            meta: { title: '学习资料' }
+          }
+        ]
       },
       {
         path: 'assignments/:id/submit', // 作业提交/查看页面，:id 为 Assignment 的 ID

@@ -2,8 +2,9 @@
 from django.db.models import Avg
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Course, TeacherCourseClass, Assignment, AssignmentSubmission
+
 from education.models import Class, Material, User
+from .models import Course, TeacherCourseClass, Assignment, AssignmentSubmission
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -331,3 +332,47 @@ class StudentCourseCardSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeacherCourseClass
         fields = ['id', 'name', 'credit', 'hours', 'teacher_name']
+
+
+class StudentCourseDetailSerializer(serializers.ModelSerializer):
+    """
+    学生课程详情页使用的序列化器，提供更丰富的课程信息。
+    基于 TeacherCourseClass 模型。
+    """
+    course_name = serializers.CharField(source='course.name', read_only=True)
+    course_description = serializers.CharField(source='course.description', read_only=True, allow_blank=True,
+                                               allow_null=True)
+    credit = serializers.DecimalField(source='course.credit', max_digits=4, decimal_places=1, read_only=True)
+    hours = serializers.IntegerField(source='course.hours', read_only=True)
+    teacher_name = serializers.SerializerMethodField(read_only=True)  # 使用 SerializerMethodField 以便处理教师姓名可能为空的情况
+
+    # 直接从 TeacherCourseClass 模型获取的字段
+    # textbook, syllabus, progress, start_date, end_date
+    # create_time, update_time (可选, 如果前端需要显示)
+
+    class Meta:
+        model = TeacherCourseClass
+        fields = [
+            'id',  # TeacherCourseClass ID
+            'course_name',
+            'course_description',
+            'credit',
+            'hours',
+            'teacher_name',
+            'textbook',
+            'syllabus',
+            'progress',
+            'start_date',
+            'end_date',
+            # 'start_week', 'end_week', # 如果需要，可以添加这些字段
+            # 'course', # 可选，如果前端需要原始 course ID
+            # 'class_obj', # 可选，如果前端需要原始 class_obj ID
+            # 'teacher', # 可选，如果前端需要原始 teacher ID
+        ]
+        read_only_fields = fields  # 因为这是学生端的只读详情
+
+    def get_teacher_name(self, obj):
+        if obj.teacher:
+            # 优先使用真实姓名，其次是用户名
+            return obj.teacher.name or obj.teacher.username
+        return "暂无教师信息"

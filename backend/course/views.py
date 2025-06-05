@@ -16,11 +16,11 @@ from rest_framework.views import APIView
 
 from education.models import User, Material, Class
 from utils.minio_tools import MinioClient
-from .models import Course, TeacherCourseClass, AssignmentSubmission, AssignmentSubmissionFile
 from .models import Assignment
+from .models import Course, TeacherCourseClass, AssignmentSubmission, AssignmentSubmissionFile
 from .permissions import IsTeacher, IsTeacherOrAdmin, IsStudent
 from .serializers import CourseInfoSerializer, AssignmentSubmissionSerializer, \
-    StudentDashboardSerializer, StudentCourseCardSerializer
+    StudentDashboardSerializer, StudentCourseCardSerializer, StudentCourseDetailSerializer
 from .serializers import CourseSerializer, CourseBriefSerializer, TeacherCourseClassSerializer, MaterialSerializer, \
     HomeworkSerializer
 from .utils import ALLOWED_EXTENSIONS, read_uploaded_file_content, MAX_CONTENT_LENGTH, extract_json_from_string
@@ -763,25 +763,32 @@ class HomeworkViewSet(viewsets.ModelViewSet):
 # 新增在学生端课程视图
 class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
     """学生课程信息视图（只读）"""
-    serializer_class = StudentCourseCardSerializer
-    permission_classes = [IsStudent]
+    # serializer_class = StudentCourseCardSerializer # 列表视图将使用这个
+    permission_classes = [IsStudent]  #
 
     def get_queryset(self):
         student = self.request.user
-        # 获取学生所在班级的所有课程绑定记录
+        # 确保 student 对象存在并且有关联的班级
+        if not student or not hasattr(student, 'class_enrolled') or not student.class_enrolled:
+            return TeacherCourseClass.objects.none()  # 如果没有班级信息，返回空查询集
+
         return TeacherCourseClass.objects.filter(
             class_obj=student.class_enrolled
         ).select_related('course', 'teacher')
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':  # 当获取单个课程详情时
+            return StudentCourseDetailSerializer  # 使用新的详细序列化器
+        return StudentCourseCardSerializer  # 列表视图使用简要序列化器
+
     @action(detail=True, methods=['get'])
     def materials(self, request, pk=None):
         """获取课程关联的教学资源"""
-        tcc = self.get_object()
+        tcc = self.get_object()  # pk 是 TeacherCourseClass 的 ID
         materials = Material.objects.filter(
-            teaching_class=tcc
+            teaching_class=tcc  # material 模型中的 teaching_class 字段关联 TeacherCourseClass
         ).order_by('-upload_time')
 
-        # 搜索和过滤
         search = request.query_params.get('search')
         material_type = request.query_params.get('type')
         if search:
@@ -790,83 +797,69 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
             materials = materials.filter(material_type=material_type)
 
         page = self.paginate_queryset(materials)
-        serializer = MaterialSerializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        # 注意：这里应该使用 MaterialSerializer，确保它已在 serializers.py 中定义或导入
+        from .serializers import MaterialSerializer  # 确保引入 MaterialSerializer
+        serializer = MaterialSerializer(page if page is not None else materials, many=True)
+
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def assignments(self, request, pk=None):
         """获取课程关联的作业列表"""
-        tcc = self.get_object()
-        assignments = Assignment.objects.filter(
+        tcc = self.get_object()  # pk 是 TeacherCourseClass 的 ID
+        # 假设 Assignment 模型有一个 active 字段来控制作业是否对学生可见
+        assignments_qs = Assignment.objects.filter(
             course_class=tcc, active=True
         ).order_by('-due_date')
 
-        # 搜索和过滤
         search = request.query_params.get('search')
         if search:
-            assignments = assignments.filter(title__icontains=search)
+            assignments_qs = assignments_qs.filter(title__icontains=search)
 
-        # 已做过的作业
-        done_assignments = {}
-        submitted = {}
-        for ass in AssignmentSubmission.objects.filter(
-                student=request.user,
-                assignment__course_class=tcc
-        ).order_by('-submit_time'):
-            if not ass.assignment_id in done_assignments:
-                done_assignments[ass.assignment_id] = []
+        # 获取学生对这些作业的提交情况
+        student_submissions = AssignmentSubmission.objects.filter(
+            student=request.user,
+            assignment__in=assignments_qs
+        ).values('assignment_id', 'score', 'submitted', 'is_returned', 'submit_time')  #
 
-            temp = {
-                "submit_id": ass.id,
-                "score": ass.score,
-                "teacher_comment": ass.teacher_comment,
-                "is_returned": ass.is_returned,
-                "submit_time": ass.submit_time,
-                "ai_comment": ass.ai_comment,
-                "ai_score": ass.ai_score,
-                "ai_generated_similarity": ass.ai_generated_similarity,
-                "ai_grading_status": ass.ai_grading_status,
-                "ai_grading_task_id": ass.ai_grading_task_id,
-            }
-            files = []
-            for ass_f in AssignmentSubmissionFile.objects.filter(submission_id=ass.id):
-                files.append({
-                    'id': ass_f.id,
-                    'file_name': ass_f.file_name,
-                    'original_name': ass_f.original_name,
-                    'update_time': ass_f.update_time
-                })
-            temp['files'] = files
-            done_assignments[ass.assignment_id].append(temp)
+        submissions_map = {sub['assignment_id']: sub for sub in student_submissions}
 
-            submitted[ass.assignment_id] = submitted.get(ass.assignment_id) or ass.submitted
-
-            if len(done_assignments[ass.assignment_id]) >= 5:  # 每个作业最多要5次记录
-                break
-
-        # 标记作业是否做过，如果做过显示得分
-        assignments_list = []
-        for assignment in assignments:
+        # 序列化作业列表，并附带提交状态
+        # 这里可以使用一个专门的序列化器，或者在视图中手动构建数据
+        # 为简化，此处手动构建
+        result_data = []
+        for assignment in assignments_qs:
+            submission_info = submissions_map.get(assignment.id)
             data = {
                 'id': assignment.id,
-                'course_class_name': f"{assignment.course_class.class_obj.name} - {assignment.course_class.course.name}",
                 'title': assignment.title,
                 'description': assignment.description,
                 'due_date': assignment.due_date,
-                'max_score': assignment.max_score,
+                'max_score': assignment.max_score,  #
                 'deploy_date': assignment.deploy_date,
-                'deployer_name': assignment.deployer.name,
-                'deployer': assignment.deployer.teacher_number,
-                'update_time': assignment.update_time,
-                'submitted': submitted.get(assignment.id) or False
+                # 课程和教师信息可以从 tcc 获取，避免重复查询
+                'course_name': tcc.course.name,
+                'teacher_name': tcc.teacher.name or tcc.teacher.username,
+                'submitted': False,
+                'score': None,
+                'is_returned': False,
+                'submit_time': None
             }
-            done_assignment_data = done_assignments.get(assignment.id) or [{}]
-            data.update(done_assignment_data[0])
-            if done_assignment_data[0]:
-                data['status'] = 'done'
-                data['submissions'] = done_assignment_data
-            assignments_list.append(data)
-        return Response(assignments_list)
+            if submission_info:
+                data.update({
+                    'submitted': submission_info['submitted'],
+                    'score': submission_info['score'],
+                    'is_returned': submission_info['is_returned'],
+                    'submit_time': submission_info['submit_time']
+                })
+            result_data.append(data)
+
+        page = self.paginate_queryset(result_data)  # 对结果列表进行分页
+        if page is not None:
+            return self.get_paginated_response(page)  # DRF 会自动处理列表的分页响应
+        return Response(result_data)
 
 
 class StudentAssignmentViewSet(viewsets.ModelViewSet):

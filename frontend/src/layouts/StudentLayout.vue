@@ -16,7 +16,7 @@ export default {
   components: { Sidebar },
   setup() {
     const menuItems = [
-      // { label: '首页', path: '/student' },
+      { label: '首页', path: '/student' },
       { label: '我的课程', path: '/student/courses' },
       // { label: '课程资源', path: '/student/courses/materials' },
       { label: '我的作业', path: '/student/assignments' },
