@@ -79,6 +79,14 @@
             >
               {{ row.score ?? '未批' }}
             </el-tag>
+            <el-tag
+              v-if="row.ai_score"
+              type="warning"
+              class="score-tag"
+              style="margin-left: 5px"
+            >
+              AI: {{ row.ai_score }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" min-width="100" fixed="right">
@@ -93,7 +101,7 @@
               }
             } }">
               <el-button type="primary" size="small">
-                {{ row.score === null ? '批改' : '查看' }}
+                {{ row.score === row.ai_score === null ? '批改' : '查看' }}
               </el-button>
             </router-link>
               <el-button type="danger" size="small" @click="returnSubmission(row)" style="margin-left: 5px">

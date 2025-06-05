@@ -679,6 +679,12 @@ class HomeworkViewSet(viewsets.ModelViewSet):
                 'title': sub.title,
                 'content': sub.content,
                 'assignment': sub.assignment.id,
+                'ai_grading_enabled': sub.assignment.ai_grading_enabled,
+                'ai_comment': sub.ai_comment,
+                'ai_score': sub.ai_score,
+                'ai_generated_similarity': sub.ai_generated_similarity,
+                'ai_grading_status': sub.ai_grading_status,
+                'ai_grading_task_id': sub.ai_grading_task_id,
             }
             file_list = []
             for file in AssignmentSubmissionFile.objects.filter(submission=sub):

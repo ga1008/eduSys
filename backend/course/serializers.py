@@ -80,6 +80,7 @@ class HomeworkSerializer(serializers.ModelSerializer):
     deployer = serializers.CharField(source='deployer.username', read_only=True)
     submit_count = serializers.SerializerMethodField()
     marked_count = serializers.SerializerMethodField()
+    ai_marked_count = serializers.SerializerMethodField()
 
     def get_submit_count(self, obj):
         """从子表 AssignmentSubmission 关联查询作业提交数量"""
@@ -91,12 +92,17 @@ class HomeworkSerializer(serializers.ModelSerializer):
         hid = obj.id
         return AssignmentSubmission.objects.filter(assignment_id=hid, score__isnull=False, submitted=True).count()
 
+    def get_ai_marked_count(self, obj):
+        """从子表 AssignmentSubmission 关联查询已AI批改的作业数量"""
+        hid = obj.id
+        return AssignmentSubmission.objects.filter(assignment_id=hid, ai_grading_status='completed', submitted=True).count()
+
     class Meta:
         model = Assignment
         fields = ['id', 'title', 'description', 'due_date', 'max_score',
                   'deploy_date', 'deployer', 'active', 'file', 'course_class', 'course_class_name', 'submit_count',
                   'marked_count',
-                  'ai_grading_enabled', 'ai_grading_prompt'
+                  'ai_grading_enabled', 'ai_grading_prompt', 'ai_marked_count'
                   ]
         read_only_fields = ['deploy_date', 'deployer']
 

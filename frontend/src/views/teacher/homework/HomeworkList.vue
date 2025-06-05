@@ -50,7 +50,7 @@
             <el-tag :type="summitMarkedType(scope.row)" size="small"
                     style="cursor: pointer; margin-right: 8px; flex-shrink: 0;"
                     @click="pushToHomeworkSubmissions(scope.row)">
-              {{ scope.row.marked_count }} / {{ scope.row.submit_count }}
+              {{ scope.row.marked_count }} | {{ scope.row.ai_marked_count }} / {{ scope.row.submit_count }}
             </el-tag>
             <el-tooltip :content="scope.row.title" placement="top">
               <span class="homework-title" @click="pushToHomeworkSubmissions(scope.row)">
@@ -197,6 +197,7 @@ function formatDate(dateString) {
 
 function summitMarkedType(row) {
   if (row.submit_count === 0) return 'info';
+  if (row.ai_marked_count === row.submit_count) return 'primary';
   if (row.marked_count < row.submit_count) return 'warning';
   return 'success';
 }
