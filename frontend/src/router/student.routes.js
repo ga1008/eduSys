@@ -1,5 +1,5 @@
+// frontend/src/router/student.routes.js
 import StudentLayout from '@/layouts/StudentLayout.vue'
-import StudentHome from '@/views/student/StudentHome.vue'
 
 export default [
   {
@@ -7,72 +7,44 @@ export default [
     component: StudentLayout,
     meta: { requiresAuth: true, role: 'student' },
     children: [
-      // 主页
       {
-        path: '',
-        redirect: '/student/assignments'
+        path: '', // 学生模块的默认路径
+        name: 'StudentHome', // 定义为学生首页
+        component: () => import('@/views/student/StudentHome.vue'), // 指向您重新设计的StudentHome.vue
+        meta: { title: '我的主页' }
       },
-
-      // 大屏
-      {
-        path: 'dashboard',
-        name: 'StudentDashboard',
-        component: () => import('@/views/student/Dashboard.vue'),
-        meta: { title: '大屏' }
-      },
-
-      // 我的课程
       {
         path: 'courses',
         name: 'StudentCourses',
         component: () => import('@/views/student/CourseList.vue'),
         meta: { title: '我的课程' }
       },
-
-      // 🔥 **新增：我的作业（无课程 id）**
       {
-        path: 'assignments',
-        name: 'StudentAssignments',
+        path: 'assignments', // 查看所有作业的列表页面
+        name: 'StudentAllAssignments',
         component: () => import('@/views/student/AssignmentList.vue'),
-        meta: { title: '我的作业' }
+        meta: { title: '全部作业' }
       },
-
-      // 课程详情
-      {
-        path: 'courses/:id?',
+      // 其他学生子路由...
+       {
+        path: 'courses/:id', // 课程详情页，:id 为 TeacherCourseClass 的 ID
         name: 'StudentCourseDetail',
         component: () => import('@/views/student/CourseDetail.vue'),
+        props: true,
         meta: { title: '课程详情' },
-        children: [
-          {
-            path: 'assignments',
-            name: 'StudentCourseAssignments',
-            component: () => import('@/views/student/AssignmentList.vue'),
-            meta: { title: '作业列表' }
-          },
-          {
-            path: 'materials',
-            name: 'StudentCourseMaterials',
-            component: () => import('@/views/student/MaterialList.vue'),
-            meta: { title: '学习资料' }
-          }
-        ]
+        // ... 可能的子路由，如课程内的作业、资料列表
       },
-
-      // 作业提交
       {
-        path: 'assignments/:id/submit',
+        path: 'assignments/:id/submit', // 作业提交/查看页面，:id 为 Assignment 的 ID
         name: 'StudentAssignmentSubmit',
         component: () => import('@/views/student/AssignmentSubmit.vue'),
         props: true,
-        meta: { title: '提交作业' }
+        meta: { title: '作业详情与提交' }
       },
-
-      // 通知公告
       {
         path: 'notices',
         name: 'StudentNotices',
-        component: () => import('@/views/student/NoticeList.vue'),
+        component: () => import('@/views/student/NoticeList.vue'), // 假设您有此组件
         meta: { title: '通知公告' }
       }
     ]
