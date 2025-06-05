@@ -1,5 +1,8 @@
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class Class(models.Model):
@@ -50,9 +53,9 @@ class User(AbstractUser):
     """
     ROLE_CHOICES = [
         ('superadmin', "Super Admin"),  # 超级管理员
-        ('admin', "Admin"),      # 超级管理员
+        ('admin', "Admin"),  # 超级管理员
         ('teacher', "Teacher"),  # 教师
-        ('student', "Student")   # 学生
+        ('student', "Student")  # 学生
     ]
 
     GENDER_CHOICES = [
@@ -171,7 +174,6 @@ class Material(models.Model):
 
     def __str__(self):
         return f"{self.teaching_class.course.name} - {self.title}"
-
 
 
 class TeacherCourseClass(models.Model):
@@ -461,3 +463,12 @@ class BlogComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.username}: {self.content[:20]}..."
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_or_update_user_notification_settings(sender, instance, created, **kwargs):
+    if created:
+        from notifications.models import UserNotificationSettings  # 延迟导入
+        UserNotificationSettings.objects.create(user=instance)
+    # 如果 UserNotificationSettings 包含需要从 User 模型同步的字段，可以在这里更新
+    # instance.notifications_settings.save() # 如果有需要同步的字段

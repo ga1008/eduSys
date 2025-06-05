@@ -1,6 +1,9 @@
 # backend/course/models.py
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.conf import settings  # 假设 settings.AUTH_USER_MODEL 作为 User 模型
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 from education.models import Class
 
@@ -109,3 +112,78 @@ class AssignmentSubmissionFile(models.Model):
 
     create_time = models.DateTimeField(auto_now_add=True, null=True, blank=True)  # 创建时间
     update_time = models.DateTimeField(auto_now=True, null=True, blank=True)  # 更新时间
+
+
+@receiver(post_save, sender=Assignment)  # 确保 Assignment 是您课程应用中的模型
+def assignment_created_or_updated_notification(sender, instance, created, **kwargs):
+    try:
+        # 延迟导入 Notification 模型以避免循环依赖问题
+        from notifications.models import Notification as NotificationModel
+        from education.models import User as UserModel  #
+
+        teacher_course_class = instance.course_class  #
+        if not (teacher_course_class and hasattr(teacher_course_class, 'class_obj')):
+            return
+
+        target_class = teacher_course_class.class_obj
+        students_in_class = UserModel.objects.filter(class_enrolled=target_class, role='student', is_active=True)  #
+
+        assignment_content_type = ContentType.objects.get_for_model(instance)
+        action_text = "发布了新作业" if created else "更新了作业"
+        notification_type_str = 'assignment_new'  # 对学生而言，更新也视为新通知或重要更新
+
+        for student in students_in_class:
+            NotificationModel.objects.create(
+                recipient=student,
+                sender=instance.deployer,  # 布置作业的教师
+                type=notification_type_str,
+                title=f"作业{action_text}: {instance.title}",
+                content=f"课程 '{teacher_course_class.course.name}' {action_text} '{instance.title}'。截止日期: {instance.due_date.strftime('%Y-%m-%d %H:%M') if instance.due_date else '未指定'}。",
+                content_type=assignment_content_type,
+                object_id=instance.id,
+                can_recipient_delete=False,  # 学生不能删除作业通知
+                can_recipient_reply=False
+            )
+    except Exception as e:
+        # logger.error(f"创建作业通知时出错: {e}")
+        print(f"创建作业通知时出错: {e}")
+
+
+@receiver(post_save, sender=AssignmentSubmission)  # 确保 AssignmentSubmission 是您课程应用中的模型
+def assignment_graded_or_submitted_notification(sender, instance, created, **kwargs):
+    try:
+        from notifications.models import Notification as NotificationModel
+        submission_content_type = ContentType.objects.get_for_model(instance)
+
+        if created and instance.submitted:  # 学生刚提交作业
+            # 通知教师
+            target_teacher = instance.assignment.deployer  # 作业的布置者
+            if target_teacher:
+                NotificationModel.objects.create(
+                    recipient=target_teacher,
+                    sender=instance.student,  # 学生是发送者
+                    type='submission_new',
+                    title=f"新作业提交: {instance.assignment.title}",
+                    content=f"学生 {instance.student.name or instance.student.username} 提交了作业 '{instance.assignment.title}'。",
+                    content_type=submission_content_type,
+                    object_id=instance.id,
+                    can_recipient_delete=True,  # 教师可删除此通知
+                    can_recipient_reply=False  # 通常教师直接去批改系统操作
+                )
+        elif not created and 'score' in (kwargs.get('update_fields') or []) and instance.score is not None:
+            # 作业被评分 (score字段更新且不为空)
+            NotificationModel.objects.create(
+                recipient=instance.student,
+                sender=instance.assignment.deployer,  # 批改者通常是布置作业的教师
+                type='assignment_graded',
+                title=f"作业已批改: {instance.assignment.title}",
+                content=f"您提交的作业 '{instance.assignment.title}' 已被批改。得分: {instance.score}。"
+                        f"{(' 教师评语: ' + instance.teacher_comment) if instance.teacher_comment else ''}",
+                content_type=submission_content_type,
+                object_id=instance.id,
+                can_recipient_delete=False,  # 学生不能删除成绩通知
+                can_recipient_reply=False
+            )
+    except Exception as e:
+        # logger.error(f"创建提交通知或批改通知时出错: {e}")
+        print(f"创建提交通知或批改通知时出错: {e}")

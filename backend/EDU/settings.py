@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'course.apps.CourseConfig',
     'django_celery_beat',
+    'notifications'
 ]
 
 MIDDLEWARE = [

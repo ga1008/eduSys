@@ -22,6 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('edu/', include('education.urls')),
     path('cou/', include('course.urls')),
+    path('notifications/api/', include('notifications.urls')), # 新增此行
     # path('edu/api/courses/', include('course.urls_courses')),  # 添加课程API映射
     # path('edu/api/teacher-course-classes/', include('course.urls_tcc')),  # 添加班级绑定API映射
 
