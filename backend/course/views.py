@@ -822,7 +822,10 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
         student_submissions = AssignmentSubmission.objects.filter(
             student=request.user,
             assignment__in=assignments_qs
-        ).values('assignment_id', 'score', 'submitted', 'is_returned', 'submit_time')  #
+        ).values(
+            'assignment_id', 'score', 'submitted', 'is_returned', 'submit_time',
+            'ai_comment', 'ai_score', 'ai_generated_similarity', 'ai_grading_status', 'ai_grading_task_id'
+        )  #
 
         submissions_map = {sub['assignment_id']: sub for sub in student_submissions}
 
@@ -852,7 +855,12 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
                     'submitted': submission_info['submitted'],
                     'score': submission_info['score'],
                     'is_returned': submission_info['is_returned'],
-                    'submit_time': submission_info['submit_time']
+                    'submit_time': submission_info['submit_time'],
+                    'ai_comment': submission_info.get('ai_comment', None),  # AI批改评论
+                    'ai_score': submission_info.get('ai_score', None),  # AI批改分数
+                    'ai_generated_similarity': submission_info.get('ai_generated_similarity', 0),  # AI生成的相似度
+                    'ai_grading_status': submission_info.get('ai_grading_status', 'pending'),  # AI批改状态
+                    'ai_grading_task_id': submission_info.get('ai_grading_task_id', None),  # AI批改任务ID
                 })
             result_data.append(data)
 

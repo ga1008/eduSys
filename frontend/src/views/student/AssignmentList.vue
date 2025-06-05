@@ -141,7 +141,7 @@
                   <el-icon>
                     <User/>
                   </el-icon>
-                  <span>发布：{{ asg.deployer_name }}</span>
+                  <span>发布：{{ asg.teacher_name }}</span>
                 </div>
                 <div class="meta-item">
                   <el-icon>
@@ -207,7 +207,7 @@
           </div>
           <div class="dialog-info-row">
             <span class="info-label">发布:</span>
-            <span class="info-value">{{ currentAssignment.deployer_name }}</span>
+            <span class="info-value">{{ currentAssignment.teacher_name }}</span>
           </div>
           <div class="dialog-info-row">
             <span class="info-label">时间:</span>
