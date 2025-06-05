@@ -829,7 +829,7 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
             student=request.user,
             assignment__in=assignments_qs
         ).values(
-            'assignment_id', 'score', 'submitted', 'is_returned', 'submit_time',
+            'assignment_id', 'score', 'submitted', 'is_returned', 'submit_time', 'teacher_comment',
             'ai_comment', 'ai_score', 'ai_generated_similarity', 'ai_grading_status', 'ai_grading_task_id'
         )  #
 
@@ -860,6 +860,7 @@ class StudentCourseViewSet(viewsets.ReadOnlyModelViewSet):
                 data.update({
                     'submitted': submission_info['submitted'],
                     'score': submission_info['score'],
+                    'teacher_comment': submission_info['teacher_comment'],
                     'is_returned': submission_info['is_returned'],
                     'submit_time': submission_info['submit_time'],
                     'ai_comment': submission_info.get('ai_comment', None),  # AI批改评论
