@@ -1,8 +1,8 @@
 <template>
   <div>
-    <h2>写新消息</h2>
-    <el-form :model="form" label-width="80px">
-      <el-form-item label="收件人">
+    <h2>编写新消息</h2>
+    <el-form :model="form" label-width="80px" class="compose-form">
+      <el-form-item label="收件人" prop="recipient">
         <el-select
             v-model="form.recipient"
             filterable
@@ -21,61 +21,94 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="主题">
-        <el-input v-model="form.title"/>
+      <el-form-item label="主题" prop="title">
+        <el-input v-model="form.title" placeholder="请输入消息主题"/>
       </el-form-item>
-      <el-form-item label="内容">
-        <el-input v-model="form.content" type="textarea" :rows="10"/>
+      <el-form-item label="内容" prop="content">
+        <v-md-editor
+            v-model="form.content"
+            height="400px"
+            placeholder="在这里输入消息内容，支持 Markdown 格式..."
+        ></v-md-editor>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="handleSend" :loading="sending">发送</el-button>
+        <el-button type="primary" @click="handleSend" :loading="sending">
+          立即发送
+        </el-button>
       </el-form-item>
     </el-form>
   </div>
 </template>
 
 <script setup>
-import {ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {searchUsers, sendMessage} from '@/api/notifications'
-import {ElMessage} from 'element-plus'
+import {ref} from 'vue';
+import {useRouter} from 'vue-router';
+import {searchUsers, sendMessage} from '@/api/notifications';
+import {ElMessage} from 'element-plus';
 
-const router = useRouter()
+// 1. 引入 v-md-editor 组件、样式和主题
+import VMdEditor from '@kangc/v-md-editor/lib/base-editor';
+import '@kangc/v-md-editor/lib/style/base-editor.css';
+import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
+import '@kangc/v-md-editor/lib/theme/style/github.css';
+
+// 2. 引入代码高亮插件
+import Prism from 'prismjs';
+
+// 3. 注册 v-md-editor 插件
+VMdEditor.use(githubTheme, {
+  Prism,
+});
+
+const router = useRouter();
 const form = ref({
   recipient: '',
   title: '',
-  content: ''
-})
-const searchLoading = ref(false)
-const sending = ref(false)
-const userOptions = ref([])
+  content: '' // v-model 将直接绑定 Markdown 字符串
+});
+const searchLoading = ref(false);
+const sending = ref(false);
+const userOptions = ref([]);
 
 const searchUsersRemote = async (query) => {
   if (query) {
-    searchLoading.value = true
+    searchLoading.value = true;
     try {
-      const response = await searchUsers(query)
-      userOptions.value = response.data
+      const response = await searchUsers(query);
+      userOptions.value = response.data;
     } finally {
-      searchLoading.value = false
+      searchLoading.value = false;
     }
   } else {
-    userOptions.value = []
+    userOptions.value = [];
   }
-}
+};
 
 const handleSend = async () => {
+  // 验证逻辑保持不变，现在它验证的是 Markdown 原文
   if (!form.value.recipient || !form.value.title.trim() || !form.value.content.trim()) {
-    ElMessage.warning('收件人、主题和内容均不能为空')
-    return
+    ElMessage.warning('收件人、主题和内容均不能为空');
+    return;
   }
-  sending.value = true
+  sending.value = true;
   try {
-    await sendMessage(form.value)
-    ElMessage.success('发送成功')
-    router.push({name: 'TeacherMessageInbox'})
+    // 直接发送 form.value，内容已是 Markdown
+    await sendMessage(form.value);
+    ElMessage.success('发送成功');
+    router.push({name: 'TeacherMessageInbox'});
   } finally {
-    sending.value = false
+    sending.value = false;
   }
-}
+};
 </script>
+
+<style scoped>
+.compose-form {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.el-form-item {
+  margin-bottom: 22px;
+}
+</style>

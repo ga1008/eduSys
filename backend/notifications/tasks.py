@@ -23,6 +23,11 @@ def get_sender_context(user: User) -> str:
         f"## 提问者信息\n- **身份**: {user.get_role_display()}\n- **用户名**: {user.username}\n- **姓名**: {user.name or '未设置'}"]
 
     if user.role == 'student':
+
+        # 添加学生基本信息，如学号等
+        context_parts.append(f"\n- **学号**: {user.student_number or '未设置'}")
+        context_parts.append(f"\n- **性别**: {user.gender or '未设置'}")
+        context_parts.append(f"\n- **邮箱**: {user.email or '未设置'}")
         context_parts.append("\n### 学业概况")
         if user.class_enrolled:
             context_parts.append(f"- **班级**: {user.class_enrolled.name}")
@@ -131,8 +136,9 @@ def process_ai_teacher_message(self):
         context = get_sender_context(sender)
         system_prompt = (
             f"你是一位资深、有耐心、善于启发学生的AI助教老师。你的名字是 {ai_teacher_user.name or ai_teacher_user.username}。"
-            "你的目标是根据用户提供的背景信息和历史交流，以富有人情味和启发性的方式回答本次问题，而不是直接给出最终答案。"
+            "你的目标是根据用户提供的背景信息和历史交流，以富有人情味和启发性的方式引导学生思考，如果有必要，可以给出最终答案。"
             "请总是尝试引导用户自己思考。请直接回复内容，不要进行额外确认。"
+            "回复的格式应为Markdown格式，确保内容清晰、简洁、易读。\n\n"
         )
         user_prompt_for_ai = f"{context}\n\n## 本次问题\n**标题**: {original_title}\n**内容**: {user_message.content}"
 
