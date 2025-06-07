@@ -43,8 +43,6 @@ MINIO_ENDPOINT = f'{MINIO_HOST}:{MINIO_PORT}'
 
 DEPLOY_HOST = os.getenv('DEPLOY_HOST', 'localhost')
 
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -155,8 +153,9 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # Celery 配置示例 (根据你的需求调整)
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')  # 或者你的结果后端 URL
+CELERY_BROKER_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
+CELERY_RESULT_BACKEND = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1"  # 建议为 result_backend 使用不同的数据库，如 /1
+
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

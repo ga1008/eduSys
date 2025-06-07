@@ -1,20 +1,25 @@
 # notifications/views.py
+import logging
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.db.models import Avg, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import viewsets, status, generics, mixins, serializers
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-from django.db.models import Q
-from django.contrib.auth import get_user_model
-from django.shortcuts import get_object_or_404
+from rest_framework.response import Response
 
-from .models import Notification, UserNotificationSettings, BlockedContact
-from .serializers import (
+from notifications import tasks
+from notifications.models import Notification, UserNotificationSettings, BlockedContact
+from notifications.serializers import (
     NotificationSerializer,
     UserNotificationSettingsSerializer,
     BlockedContactSerializer,
     BasicUserSerializer  # 用于用户搜索
 )
+from notifications.tasks import AI_TEACHER_USERNAMES, logger
 
 # from .permissions import CanManageOwnNotifications, CanManageSettings, CanManageBlocking # 自定义权限类
 
@@ -130,6 +135,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
             recipient = User.objects.get(id=int(recipient_id))
         except (ValueError, User.DoesNotExist):
             raise serializers.ValidationError({"recipient": "接收用户未找到。"})
+
+        # --- 新增的AI消息拦截逻辑 ---
+        if recipient.username in AI_TEACHER_USERNAMES:
+            self.handle_ai_teacher_message(serializer, sender, recipient)
+            return Response(
+                {"detail": "AI老师在思考"},
+                status=status.HTTP_200_OK
+            )
+
         # ...后续的黑名单和策略检查逻辑...
         settings, _ = UserNotificationSettings.objects.get_or_create(user=recipient)
         if BlockedContact.objects.filter(blocker=recipient, blocked_user=sender).exists():
@@ -313,6 +327,29 @@ class NotificationViewSet(viewsets.ModelViewSet):
             return Response({"detail": f"已成功屏蔽用户 {sender_to_block.username}。"}, status=status.HTTP_201_CREATED)
         else:
             return Response({"detail": f"用户 {sender_to_block.username} 已在您的黑名单中。"}, status=status.HTTP_200_OK)
+
+    def handle_ai_teacher_message(self, serializer, sender, ai_teacher_user):
+        """
+        处理发往AI教师的消息：保存用户原始消息，并分发一个Celery任务来处理AI交互。
+        """
+        # 步骤 A: 保存用户的原始提问
+        user_message_to_ai = serializer.save(
+            sender=sender, recipient=ai_teacher_user, is_read=True,
+            can_recipient_delete=False, can_recipient_reply=False
+        )
+
+        # 步骤 B: 立即给用户一个反馈
+        # Notification.objects.create(
+        #     recipient=sender, sender=ai_teacher_user, type='private_message',
+        #     title=f"Re: {user_message_to_ai.title}",
+        #     content="您好！我是您的AI助教。我已经收到您的问题，正在思考中，请稍后查看我的回复。",
+        #     parent_notification=user_message_to_ai
+        # )
+
+        # 步骤 C: 分发Celery任务，传递用户原始消息的ID
+        tasks.process_ai_teacher_message.delay(user_message_to_ai.id)
+
+        logger.info(f"Dispatched AI processing task for notification ID: {user_message_to_ai.id}")
 
 
 class UserNotificationSettingsView(generics.RetrieveUpdateAPIView):
