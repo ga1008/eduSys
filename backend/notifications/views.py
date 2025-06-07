@@ -232,7 +232,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         # 检查针对 new_recipient 的屏蔽和策略 (与 perform_create 中类似)
         settings, _ = UserNotificationSettings.objects.get_or_create(user=new_recipient)
         if BlockedContact.objects.filter(blocker=new_recipient, blocked_user=current_user_as_sender).exists():
-            raise serializers.ValidationError({"detail": "您的回复无法发送。"})
+            raise serializers.ValidationError({"detail": "哦吼，被拉黑了"})
         # 此处应添加完整的策略检查逻辑...
 
         # 确定回复消息的 can_recipient_delete 状态
@@ -356,17 +356,17 @@ class BlockedContactViewSet(viewsets.ModelViewSet):
 
         # 规则检查
         if blocked_user.role == 'superadmin' and self.request.user.role != 'superadmin':
-            raise serializers.ValidationError({"detail": "您不能屏蔽超级管理员。"})
+            raise serializers.ValidationError({"detail": "您不能屏蔽超级管理员"})
         if self.request.user.role == 'student' and blocked_user.role in ['teacher', 'admin', 'superadmin']:
-            raise serializers.ValidationError({"detail": "学生不能屏蔽教职工。"})
+            raise serializers.ValidationError({"detail": "他是老师哦"})
         if self.request.user.role == 'teacher' and blocked_user.role in ['admin', 'superadmin']:
             raise serializers.ValidationError({"detail": "教师不能屏蔽管理员。"})
         if self.request.user == blocked_user:
-            raise serializers.ValidationError({"detail": "您不能屏蔽自己。"})
+            raise serializers.ValidationError({"detail": "这是你自己哦"})
 
         # 检查是否已存在
         if BlockedContact.objects.filter(blocker=self.request.user, blocked_user=blocked_user).exists():
-            raise serializers.ValidationError({"detail": "该用户已在您的黑名单中。"})
+            raise serializers.ValidationError({"detail": "已经在黑名单里啦"})
 
         serializer.save(blocker=self.request.user, blocked_user=blocked_user)
 
