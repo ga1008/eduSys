@@ -22,62 +22,54 @@ class BasicUserSerializer(serializers.ModelSerializer):
 class NotificationSerializer(serializers.ModelSerializer):
     sender_info = BasicUserSerializer(source='sender', read_only=True)
     recipient_info = BasicUserSerializer(source='recipient', read_only=True)
-    type_display = serializers.CharField(source='get_type_display', read_only=True)  # 获取choice字段的可读名称
-
-    # related_object_url = serializers.SerializerMethodField() # 可选: 生成关联对象URL的字段
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
 
     class Meta:
         model = Notification
         fields = [
             'id', 'recipient', 'recipient_info', 'sender', 'sender_info',
-            'type', 'type_display',  # 使用 type_display 代替 get_type_display
+            'type', 'type_display',
             'title', 'content', 'timestamp', 'is_read', 'read_at',
-            'content_type', 'object_id',  # 'related_object_url',
+            'content_type', 'object_id',
             'can_recipient_delete', 'can_recipient_reply',
             'parent_notification', 'data'
         ]
+        # --- 主要修改在这里 ---
         read_only_fields = [
-            'id', 'recipient_info', 'sender_info', 'type_display',
-            'timestamp', 'read_at', 'content_type', 'object_id'
+            'id', 'recipient_info', 'sender_info',
+            'type_display',  # type_display 本身就是只读的
+            'timestamp', 'read_at', 'content_type', 'object_id',
+            'type'  # <-- 新增此行，将 type 字段在反序列化（输入）时设为只读
         ]
-        # 确保 recipient 和 sender 在创建时是可写的，但通常通过 perform_create 设置
+        # --------------------
+
         extra_kwargs = {
-            'recipient': {'write_only': True, 'required': False},  # 通常在视图中设置
-            'sender': {'write_only': True, 'required': False},  # 通常在视图中设置
+            # recipient 字段也应该是只写的，因为它在视图中处理，而不是直接从请求数据中完整解析
+            'recipient': {'write_only': True, 'required': False},
+            'sender': {'write_only': True, 'required': False},
         }
 
-    # def get_related_object_url(self, obj):
-    #     if obj.related_object:
-    #         # 这需要您有一个URL命名约定或注册表
-    #         # 示例: 如果关联对象有 get_absolute_url 方法，则 return obj.related_object.get_absolute_url()
-    #         return None # 替换为实际的URL生成逻辑
-    #     return None
-
+    # create 方法保持不变
     def create(self, validated_data):
-        # 设置 can_recipient_delete 和 can_recipient_reply 的逻辑
-        # 也可以在信号或视图中完成此操作
-        notification_type = validated_data.get('type')
-        recipient = validated_data.get('recipient')  # recipient 对象
-        sender = validated_data.get('sender')  # sender 对象
+        notification_type = validated_data.get('type')  # 此处获取到的 type 将是后端在 save() 时传入的
+        recipient = validated_data.get('recipient')
+        sender = validated_data.get('sender')
         recipient_role = recipient.role if recipient else None
 
-        # 默认规则 (可在其他地方或通过信号被特定逻辑覆盖)
         if notification_type == 'private_message':
             validated_data['can_recipient_reply'] = True
             if recipient_role == 'student':
-                # 学生不能删除来自教师/管理员的私信
                 if sender and sender.role in ['teacher', 'admin', 'superadmin']:
                     validated_data['can_recipient_delete'] = False
-                else:  # 来自其他学生的消息
+                else:
                     validated_data['can_recipient_delete'] = True
-            # 教师/管理员通常可以删除私信，除非来自超级管理员 (由策略处理)
         elif notification_type in ['assignment_new', 'assignment_graded', 'course_change', 'class_change',
                                    'system_announcement']:
-            validated_data['can_recipient_delete'] = False  # 系统生成或重要信息
+            validated_data['can_recipient_delete'] = False
             validated_data['can_recipient_reply'] = False
         elif notification_type in ['forum_reply', 'forum_like_summary']:
-            validated_data['can_recipient_delete'] = True  # 论坛相关通知用户可自行删除
-            validated_data['can_recipient_reply'] = False  # 回复应在论坛内进行，而非通过通知系统
+            validated_data['can_recipient_delete'] = True
+            validated_data['can_recipient_reply'] = False
 
         return super().create(validated_data)
 
