@@ -18,7 +18,9 @@
     <div class="stats-container">
       <el-card class="stat-card" shadow="hover" @click="goTo('courses')">
         <div class="stat-content">
-          <el-icon size="30" color="#409EFF"><School /></el-icon>
+          <el-icon size="30" color="#409EFF">
+            <School/>
+          </el-icon>
           <div class="stat-info">
             <div class="stat-value">{{ stats.course_count }}</div>
             <div class="stat-label">教授课程</div>
@@ -28,7 +30,9 @@
 
       <el-card class="stat-card" shadow="hover" @click="goTo('students')">
         <div class="stat-content">
-          <el-icon size="30" color="#67C23A"><User /></el-icon>
+          <el-icon size="30" color="#67C23A">
+            <User/>
+          </el-icon>
           <div class="stat-info">
             <div class="stat-value">{{ stats.student_count }}</div>
             <div class="stat-label">学生总数</div>
@@ -38,7 +42,9 @@
 
       <el-card class="stat-card" shadow="hover" @click="goTo('classes')">
         <div class="stat-content">
-          <el-icon size="30" color="#E6A23C"><Collection /></el-icon>
+          <el-icon size="30" color="#E6A23C">
+            <Collection/>
+          </el-icon>
           <div class="stat-info">
             <div class="stat-value">{{ stats.class_count }}</div>
             <div class="stat-label">教学班级</div>
@@ -48,7 +54,9 @@
 
       <el-card class="stat-card" shadow="hover" @click="goTo('messages')">
         <div class="stat-content">
-          <el-icon size="30" color="#E6A23C"><Message /></el-icon>
+          <el-icon size="30" color="#E6A23C">
+            <Message/>
+          </el-icon>
           <div class="stat-info">
             <div class="stat-value">{{ stats.messages || 0 }}</div>
             <div class="stat-label">所有信息</div>
@@ -70,8 +78,8 @@
               返回近期课程
             </el-button>
             <el-button
-              type="warning"
-              @click="$router.push(`/teacher/courses/import`)">
+                type="warning"
+                @click="$router.push(`/teacher/courses/import`)">
               导入课程
             </el-button>
           </div>
@@ -80,23 +88,23 @@
       </template>
 
       <el-table
-        :data="currentDisplayCourses"
-        v-loading="loading || loadingAllCourses"
-        style="width: 100%">
-        <el-table-column prop="course_name" label="课程名称" />
-        <el-table-column prop="class_name" label="班级" />
+          :data="currentDisplayCourses"
+          v-loading="loading || loadingAllCourses"
+          style="width: 100%">
+        <el-table-column prop="course_name" label="课程名称"/>
+        <el-table-column prop="class_name" label="班级"/>
         <el-table-column label="操作">
           <template #default="scope">
             <el-button
-              type="primary"
-              size="small"
-              @click="$router.push(`/teacher/courses/students/${scope.row.id}`)">
+                type="primary"
+                size="small"
+                @click="$router.push(`/teacher/courses/students/${scope.row.id}`)">
               学生名单
             </el-button>
             <el-button
-              type="success"
-              size="small"
-              @click="$router.push(`/teacher/courses/homeworks/${scope.row.id}`)">
+                type="success"
+                size="small"
+                @click="$router.push(`/teacher/courses/homeworks/${scope.row.id}`)">
               作业管理
             </el-button>
           </template>
@@ -106,13 +114,13 @@
       <!-- 分页器 -->
       <div class="pagination-container" v-if="showAllCourses">
         <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[5, 10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="allCourses.length"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :page-sizes="[5, 10, 20, 50]"
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="allCourses.length"
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
         />
       </div>
     </el-card>
@@ -120,12 +128,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useUserStore } from '@/store/user'
-import { useRouter } from 'vue-router'  // 导入useRouter
-import { fetchTeacherDashboard, fetchTeacherCourseClasses } from '@/api/teachers'
+import {ref, computed, onMounted} from 'vue'
+import {useUserStore} from '@/store/user'
+import {useRouter} from 'vue-router'  // 导入useRouter
+import {fetchTeacherDashboard, fetchTeacherCourseClasses} from '@/api/teachers'
+import {fetchNotifications} from '@/api/notifications'
 import {School, User, Collection, Message} from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import {ElMessage} from 'element-plus'
 
 const router = useRouter()  // 获取路由实例
 const userStore = useUserStore()
@@ -136,7 +145,8 @@ const welcomeMessage = ref('')
 const stats = ref({
   course_count: 0,
   class_count: 0,
-  student_count: 0
+  student_count: 0,
+  messages: 0
 })
 const recentCourses = ref([])
 const allCourses = ref([])
@@ -171,12 +181,18 @@ const handleCurrentChange = (val) => {
 const loadDashboardData = async () => {
   loading.value = true
   try {
-    const response = await fetchTeacherDashboard()
-    teacherInfo.value = response.data.teacher
-    stats.value = response.data.stats
-    recentCourses.value = response.data.recent_courses
+    // 并行获取数据
+    const [dashboardRes, messagesRes] = await Promise.all([
+      fetchTeacherDashboard(),
+      fetchNotifications({page_size: 1}) // 只获取一条以拿到总数
+    ]);
 
-    // 设置欢迎消息
+    teacherInfo.value = dashboardRes.data.teacher
+    stats.value = dashboardRes.data.stats
+    recentCourses.value = dashboardRes.data.recent_courses
+    stats.value.messages = messagesRes.data.length // 如果后端没分页，则直接用长度
+    // 如果后端分页了，则使用: stats.value.messages = messagesRes.data.count
+
     if (teacherInfo.value && teacherInfo.value.name) {
       welcomeMessage.value = `欢迎回来，${teacherInfo.value.name}！`
     } else {
