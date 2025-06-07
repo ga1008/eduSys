@@ -1,5 +1,5 @@
 import AdminLayout from '@/layouts/AdminLayout.vue'
-import AdminHome   from '@/views/AdminHome.vue'
+import AdminHome   from '@/views/admin/AdminHome.vue'
 
 export default [
   {
