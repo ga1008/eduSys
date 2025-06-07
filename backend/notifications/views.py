@@ -275,6 +275,45 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(new_notification).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='block-sender')
+    def block_sender(self, request, pk=None):
+        """
+        将当前通知的发件人添加到用户的黑名单中。
+        """
+        notification = self.get_object()
+
+        # 1. 检查权限：必须是收件人才能拉黑发件人
+        if notification.recipient != request.user:
+            return Response({"detail": "您没有权限执行此操作。"}, status=status.HTTP_403_FORBIDDEN)
+
+        sender_to_block = notification.sender
+        # 2. 检查发件人是否存在（例如，系统通知的sender为null）
+        if not sender_to_block:
+            return Response({"detail": "不能屏蔽系统通知。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        blocker = request.user
+
+        # 3. 复用 BlockedContactViewSet 中的角色校验逻辑
+        if sender_to_block.role == 'superadmin' and blocker.role != 'superadmin':
+            return Response({"detail": "您不能屏蔽超级管理员。"}, status=status.HTTP_403_FORBIDDEN)
+        if blocker.role == 'student' and sender_to_block.role in ['teacher', 'admin', 'superadmin']:
+            return Response({"detail": "学生不能屏蔽教职工。"}, status=status.HTTP_403_FORBIDDEN)
+        if blocker.role == 'teacher' and sender_to_block.role in ['admin', 'superadmin']:
+            return Response({"detail": "教师不能屏蔽管理员。"}, status=status.HTTP_403_FORBIDDEN)
+        if blocker == sender_to_block:
+            return Response({"detail": "您不能屏蔽自己。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 4. 使用 get_or_create 添加到黑名单，避免重复创建
+        _, created = BlockedContact.objects.get_or_create(
+            blocker=blocker,
+            blocked_user=sender_to_block
+        )
+
+        if created:
+            return Response({"detail": f"已成功屏蔽用户 {sender_to_block.username}。"}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"detail": f"用户 {sender_to_block.username} 已在您的黑名单中。"}, status=status.HTTP_200_OK)
+
 
 class UserNotificationSettingsView(generics.RetrieveUpdateAPIView):
     serializer_class = UserNotificationSettingsSerializer
