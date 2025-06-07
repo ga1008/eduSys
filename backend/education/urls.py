@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import ClassViewSet, StudentViewSet, login_view, logout_view, me_view, TeacherViewSet
+from .views import ClassViewSet, StudentViewSet, login_view, logout_view, me_view, TeacherViewSet, SuperAdminViewSet
 
 router = DefaultRouter()
 router.register(r'classes', ClassViewSet, basename='class')
 router.register(r'students', StudentViewSet, basename='student')
 router.register(r'teachers', TeacherViewSet, basename='teacher')
+router.register(r'superadmins', SuperAdminViewSet, basename='superadmin')
 
 urlpatterns = [
     path('api/login/', login_view, name='api_login'),

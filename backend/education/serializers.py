@@ -19,7 +19,7 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = User  # 使用自定义的User模型
         fields = ['id', 'username', 'student_number', 'name', 'email',
-                 'gender', 'phone', 'qq', 'class_enrolled', 'password', 'role']
+                  'gender', 'phone', 'qq', 'class_enrolled', 'password', 'role']
         read_only_fields = ['username']
         extra_kwargs = {
             'email': {'required': True},
@@ -86,5 +86,54 @@ class TeacherSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
+        instance.save()
+        return instance
+
+
+class SuperAdminSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False, help_text="管理员密码")
+
+    class Meta:
+        model = User
+        # 使用 username 作为唯一标识，而非 teacher_number
+        fields = ['id', 'username', 'name', 'gender', 'email', 'password', 'role', 'phone']
+        read_only_fields = ['id', 'role']
+        extra_kwargs = {
+            'email': {'required': True},
+            'username': {'required': True}  # username 是必填项
+        }
+
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+        # 确保 username 不为空
+        if not validated_data.get('username'):
+            raise serializers.ValidationError({"username": "用户名不能为空。"})
+
+        user = User(**validated_data)
+        if password:
+            user.set_password(password)
+        else:
+            # 新建管理员时，密码是必需的
+            raise serializers.ValidationError({"password": "创建管理员时必须设置初始密码。"})
+
+        user.role = 'superadmin'  # 核心：确保角色正确
+        user.is_staff = True  # 超级管理员通常也是 staff
+        user.is_superuser = True  # 确保 Django 的超级管理员权限
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+
+        # Superadmin 不能被降级
+        if 'role' in validated_data and validated_data['role'] != 'superadmin':
+            raise serializers.ValidationError({"role": "不能修改超级管理员的角色。"})
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if password:
+            instance.set_password(password)
+
         instance.save()
         return instance

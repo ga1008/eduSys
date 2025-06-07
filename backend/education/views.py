@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 
 from .models import Class, User, TeacherCourseClass, Course
 from .permissions import IsSuperAdmin, IsAdmin, IsTeacher
-from .serializers import ClassSerializer, StudentSerializer, TeacherSerializer
+from .serializers import ClassSerializer, StudentSerializer, TeacherSerializer, SuperAdminSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,22 @@ def me_view(request):
         # 可加更多字段, 如 user.id, email 等
     }
     return Response(data, status=status.HTTP_200_OK)
+
+
+class SuperAdminViewSet(viewsets.ModelViewSet):
+    """
+    一个只允许超级管理员访问的视图集，用于管理其他超级管理员。
+    """
+    queryset = User.objects.filter(role='superadmin')
+    serializer_class = SuperAdminSerializer
+    permission_classes = [IsSuperAdmin]  # 关键：只有超级管理员才能操作
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # 不允许超管对自己执行删除或修改关键信息的操作（通过前端限制或更复杂的对象级权限）
+        # 为简化，我们暂时只通过 queryset 排除当前用户，防止在列表中直接操作自己
+        # return qs.exclude(id=self.request.user.id)
+        return qs  # 允许看到自己，但在前端 UI 做限制
 
 
 class TeacherViewSet(viewsets.ModelViewSet):

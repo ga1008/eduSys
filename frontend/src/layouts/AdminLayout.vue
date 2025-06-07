@@ -20,6 +20,7 @@ export default {
     // 管理员角色菜单项
     const menuItems = [
       { label: '首页',       path: '/admin' },
+      { label: '超管管理', path: '/admin/superadmins' },
       { label: '教师管理',   path: '/admin/teachers' },
       { label: '班级管理',   path: '/admin/classes' },
       { label: '课程管理',   path: '/admin/courses' }
