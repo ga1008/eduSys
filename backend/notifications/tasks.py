@@ -1,4 +1,6 @@
 import os
+from django.utils import timezone
+
 import httpx
 import logging
 from celery import shared_task
@@ -30,11 +32,35 @@ def get_sender_context(user: User) -> str:
                 context_parts.append("- **在修课程**: " + ", ".join(
                     [f"{c.course.name} ({c.teacher.name or c.teacher.username})" for c in courses]))
 
-            submissions = AssignmentSubmission.objects.filter(student=user)
-            submission_count = submissions.count()
-            avg_score = submissions.filter(score__isnull=False).aggregate(avg=Avg('score'))['avg']
+            submissions_objs = AssignmentSubmission.objects.filter(student=user)
+            submissions = []
+            for submission in submissions_objs:
+                data = {
+                    'assignment': {
+                        'deployer': submission.assignment.deployer.username if submission.assignment.deployer else '未知',
+                        'due_date': submission.assignment.due_date,
+                        'description': submission.assignment.description,
+                        'title': submission.assignment.title,
+                    },
+                    'score': submission.score,
+                    'content': submission.content,
+                    'submitted': submission.submitted,
+                    'submit_time': submission.submit_time,
+                    'teacher_comment': submission.teacher_comment,
+                    'is_returned': submission.is_returned,
+                    'ai_comment': submission.ai_comment,
+                    'ai_score': submission.ai_score,
+                    'ai_generated_similarity': submission.ai_generated_similarity,
+                }
+                submissions.append(data)
+            submission_count = submissions_objs.count()
+            avg_score = submissions_objs.filter(score__isnull=False).aggregate(avg=Avg('score'))['avg']
             context_parts.append(
                 f"- **作业统计**: 共提交 {submission_count} 次, 平均分 {avg_score:.1f}" if avg_score else f"- **作业统计**: 共提交 {submission_count} 次")
+            context_parts.append(
+                "- **最近提交的作业**: " + ", ".join(
+                    [f"{s['assignment']['title']} (分数: {s['score']}, 提交时间: {s['submit_time']})" for s in
+                     submissions]))
         else:
             context_parts.append("- **班级**: 暂未分配")
 
@@ -81,69 +107,81 @@ def get_sender_context(user: User) -> str:
     return "\n".join(context_parts)
 
 
+def find_all_messages_for_ai_teacher():
+    """
+    查找所有需要AI助教处理的消息。
+    目前假设所有发给AI助教的私信都需要处理。
+    """
+    ai_teacher_ids = User.objects.filter(username__in=AI_TEACHER_USERNAMES).values_list('id', flat=True)
+    return Notification.objects.filter(recipient__in=ai_teacher_ids, is_read=False).order_by(
+        '-timestamp')[:3]
+
+
 @shared_task(bind=True, name="notifications.tasks.process_ai_teacher_message", default_retry_delay=60, max_retries=3)
-def process_ai_teacher_message(self, user_message_id):
+def process_ai_teacher_message(self):
     """
     Celery task to process a message sent to an AI teacher.
     """
-    try:
-        user_message = Notification.objects.get(pk=user_message_id)
+    for user_message in find_all_messages_for_ai_teacher():
         sender = user_message.sender
         ai_teacher_user = user_message.recipient
         original_title = user_message.title
-    except Notification.DoesNotExist:
-        logger.error(f"Notification with ID {user_message_id} not found for AI processing.")
-        return
 
-    # 1. 收集上下文并构建Prompt
-    context = get_sender_context(sender)
-    system_prompt = (
-        f"你是一位资深、有耐心、善于启发学生的AI助教老师。你的名字是 {ai_teacher_user.name or ai_teacher_user.username}。"
-        "你的目标是根据用户提供的背景信息和历史交流，以富有人情味和启发性的方式回答本次问题，而不是直接给出最终答案。"
-        "请总是尝试引导用户自己思考。请直接回复内容，不要进行额外确认。"
-    )
-    user_prompt_for_ai = f"{context}\n\n## 本次问题\n**标题**: {original_title}\n**内容**: {user_message.content}"
+        # 1. 收集上下文并构建Prompt
+        context = get_sender_context(sender)
+        system_prompt = (
+            f"你是一位资深、有耐心、善于启发学生的AI助教老师。你的名字是 {ai_teacher_user.name or ai_teacher_user.username}。"
+            "你的目标是根据用户提供的背景信息和历史交流，以富有人情味和启发性的方式回答本次问题，而不是直接给出最终答案。"
+            "请总是尝试引导用户自己思考。请直接回复内容，不要进行额外确认。"
+        )
+        user_prompt_for_ai = f"{context}\n\n## 本次问题\n**标题**: {original_title}\n**内容**: {user_message.content}"
 
-    # 2. 估算Token并截断
-    if len(system_prompt) + len(user_prompt_for_ai) > 10000:
-        logger.warning(f"AI prompt for user {sender.username} exceeds token limit estimation. Truncating.")
-        user_prompt_for_ai = user_prompt_for_ai[:10000 - len(system_prompt)]
+        # 2. 估算Token并截断
+        if len(system_prompt) + len(user_prompt_for_ai) > 10000:
+            logger.warning(f"AI prompt for user {sender.username} exceeds token limit estimation. Truncating.")
+            user_prompt_for_ai = user_prompt_for_ai[:10000 - len(system_prompt)]
 
-    # 3. 判断使用哪个模型
-    use_reasoning_model = (ai_teacher_user.username == 'teacherDeepseekR')
+        # 3. 判断使用哪个模型
+        use_reasoning_model = (ai_teacher_user.username == 'teacherDeepseekR')
 
-    # 4. 调用AI服务
-    ai_service_url = os.getenv('AI_SERVICE_URL', 'http://localhost:8080/api/v1/chat/completions')
-    payload = {
-        "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt_for_ai}],
-        "use_reasoning_model": use_reasoning_model,
-    }
+        # 4. 调用AI服务
+        ai_service_url = os.getenv('AI_SERVICE_URL', 'http://localhost:8080/api/v1/chat/completions')
+        payload = {
+            "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt_for_ai}],
+            "use_reasoning_model": use_reasoning_model,
+        }
 
-    try:
-        with httpx.Client(timeout=180.0) as client:
-            response = client.post(ai_service_url, json=payload)
-            response.raise_for_status()
-            ai_response_data = response.json()
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                response = client.post(ai_service_url, json=payload)
+                response.raise_for_status()
+                ai_response_data = response.json()
 
-        if ai_response_data.get("success") and ai_response_data.get("content"):
-            ai_content = ai_response_data["content"]
-        else:
-            ai_content = f"抱歉，AI助教暂时无法连接，请稍后再试。错误: {ai_response_data.get('error', '未知错误')}"
-            logger.error(f"AI service call failed for user {sender.id}: {ai_response_data.get('error')}")
+            if ai_response_data.get("success") and ai_response_data.get("content"):
+                ai_content = ai_response_data["content"]
+            else:
+                ai_content = f"抱歉，AI助教暂时无法连接，请稍后再试。错误: {ai_response_data.get('error', '未知错误')}"
+                logger.error(f"AI service call failed for user {sender.id}: {ai_response_data.get('error')}")
 
-    except Exception as e:
-        logger.error(f"Failed to communicate with AI service for user {sender.id}: {e}", exc_info=True)
-        # 如果调用失败，自动重试
-        raise self.retry(exc=e)
+        except Exception as e:
+            logger.error(f"Failed to communicate with AI service for user {sender.id}: {e}", exc_info=True)
+            # 如果调用失败，自动重试
+            raise self.retry(exc=e)
 
-    # 5. 将AI的回复作为新消息存入数据库
-    Notification.objects.create(
-        recipient=sender,
-        sender=ai_teacher_user,
-        type='private_message',
-        title=f"Re: {original_title}",
-        content=ai_content,
-        parent_notification=user_message,
-        can_recipient_delete=True,
-        can_recipient_reply=True
-    )
+        # 5. 将AI的回复作为新消息存入数据库
+        Notification.objects.create(
+            recipient=sender,
+            sender=ai_teacher_user,
+            type='private_message',
+            title=f"Re: {original_title}",
+            content=ai_content,
+            parent_notification=user_message,
+            can_recipient_delete=True,
+            can_recipient_reply=True,
+        )
+
+        # 6. 标记原消息为已读
+        user_message.is_read = True
+        user_message.read_at = timezone.now()
+        user_message.save()
+

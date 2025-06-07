@@ -334,7 +334,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         """
         # 步骤 A: 保存用户的原始提问
         user_message_to_ai = serializer.save(
-            sender=sender, recipient=ai_teacher_user, is_read=True,
+            sender=sender, recipient=ai_teacher_user, is_read=False,
             can_recipient_delete=False, can_recipient_reply=False
         )
 
@@ -347,7 +347,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         # )
 
         # 步骤 C: 分发Celery任务，传递用户原始消息的ID
-        tasks.process_ai_teacher_message.delay(user_message_to_ai.id)
+        # tasks.process_ai_teacher_message.delay(user_message_to_ai.id)
 
         logger.info(f"Dispatched AI processing task for notification ID: {user_message_to_ai.id}")
 

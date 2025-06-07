@@ -144,7 +144,11 @@ REST_FRAMEWORK = {
 CELERY_BEAT_SCHEDULE = {
     'check-ai-grading-results-every-5-minutes': {
         'task': 'course.tasks.check_ai_grading_results',  # 任务的完整路径
-        'schedule': timedelta(minutes=5),  # 每5分钟执行一次
+        'schedule': timedelta(minutes=1),  # 每5分钟执行一次
+    },
+    'check-ai-teacher-messages': {
+        'task': 'notifications.tasks.process_ai_teacher_message',  # 任务的完整路径
+        'schedule': timedelta(minutes=1),  # 每5分钟执行一次
     },
     'cleanup-old-ai-submissions-every-hour': {
         'task': 'course.tasks.cleanup_old_processing_ai_submissions',
@@ -163,6 +167,12 @@ CELERY_TIMEZONE = 'Asia/Shanghai'  # 设置为你的时区
 
 # Django Celery Beat 配置
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'health_check_interval': 60,  # 每60秒发送一次心跳包
+    'visibility_timeout': 3600,   # 任务可见性超时1小时
+}
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True # 确保启动时能重试连接
 
 SESSION_COOKIE_SAMESITE = 'None'  # 允许跨站
 SESSION_COOKIE_SECURE = True  # SameSite=None 时必须使用HTTPS下的安全Cookie
