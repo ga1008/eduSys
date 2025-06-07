@@ -30,6 +30,15 @@
             />
           </el-menu-item>
 
+            <el-menu-item index="/teacher/messages/sent">
+              <div class="menu-item-content">
+                <el-icon>
+                  <Promotion/>
+                </el-icon>
+                <span>已发送</span>
+              </div>
+            </el-menu-item>
+
           <el-menu-item index="/teacher/messages/settings">
             <div class="menu-item-content">
               <el-icon>
@@ -52,7 +61,7 @@
 </template>
 
 <script setup>
-import {Edit, MessageBox, Setting} from '@element-plus/icons-vue'
+import { Edit, MessageBox, Setting, Promotion } from '@element-plus/icons-vue'
 import {useNotificationStore} from '@/store/notifications'
 
 const notificationStore = useNotificationStore()

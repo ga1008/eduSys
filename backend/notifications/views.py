@@ -45,31 +45,95 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
         return base_qs.select_related('sender', 'recipient', 'content_type', 'parent_notification')
 
+    def get_object(self):
+        """
+        重写 get_object，允许基于 pk 直接查找，权限在各个方法中单独检查。
+        """
+        obj = get_object_or_404(Notification, pk=self.kwargs["pk"])
+        # self.check_object_permissions(self.request, obj) # 权限检查移到具体方法内
+        return obj
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        重写 retrieve 方法，允许发件人或收件人查看消息详情。
+        """
+        notification = self.get_object()  # get_object 会调用 get_queryset，但我们需要自定义查找逻辑
+
+        # 允许发件人或收件人访问
+        if notification.recipient != request.user and notification.sender != request.user:
+            return Response({"detail": "您没有权限查看此消息。"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(notification)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='sent')
+    def sent(self, request):
+        """
+        获取当前用户已发送的消息列表。
+        支持搜索和分页。
+        """
+        user = request.user
+        queryset = Notification.objects.filter(sender=user).select_related('sender', 'recipient')
+
+        # 添加搜索功能
+        search_term = request.query_params.get('search', None)
+        if search_term:
+            queryset = queryset.filter(
+                Q(title__icontains=search_term) |
+                Q(content__icontains=search_term) |
+                Q(recipient__username__icontains=search_term) |
+                Q(recipient__name__icontains=search_term)
+            )
+
+        # DRF 默认的分页处理
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='retract')
+    def retract(self, request, pk=None):
+        """
+        撤回10分钟内发送且对方未读的消息。
+        """
+        notification = self.get_object()
+
+        # 1. 检查权限：必须是发件人
+        if notification.sender != request.user:
+            return Response({"detail": "您没有权限撤回此消息。"}, status=status.HTTP_403_FORBIDDEN)
+
+        # 2. 检查时效：必须在10分钟内
+        if timezone.now() - notification.timestamp > timedelta(minutes=10):
+            return Response({"detail": "超过10分钟，无法撤回。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. 检查状态：对方不能已读
+        if notification.is_read:
+            return Response({"detail": "对方已读，无法撤回。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 4. 执行删除
+        notification.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def perform_create(self, serializer):
         """
-        处理发送通知（例如，私信）。系统生成的通知通过信号或直接模型调用创建。
-        此方法主要用于用户主动发送私信。
+        处理发送私信。
         """
+        # ... 此方法逻辑保持不变 ...
         sender = self.request.user
-        recipient_id = self.request.data.get('recipient')  # 前端应传递 recipient 的 ID
+        recipient_id = self.request.data.get('recipient')
         if not recipient_id:
             raise serializers.ValidationError({"recipient": "必须提供接收者ID。"})
-
         try:
-            # 确保 recipient_id 是整数
-            recipient_id = int(recipient_id)
-            recipient = User.objects.get(id=recipient_id)
+            recipient = User.objects.get(id=int(recipient_id))
         except (ValueError, User.DoesNotExist):
             raise serializers.ValidationError({"recipient": "接收用户未找到。"})
-
-        # 检查黑名单规则和接收者设置
+        # ...后续的黑名单和策略检查逻辑...
         settings, _ = UserNotificationSettings.objects.get_or_create(user=recipient)
         if BlockedContact.objects.filter(blocker=recipient, blocked_user=sender).exists():
-            raise serializers.ValidationError({
-                "detail": "消息无法发送。接收方可能已将您屏蔽或不接收来自您的消息。"
-            })
-
-        # 应用接收者的策略
+            raise serializers.ValidationError({"detail": "消息无法发送。接收方可能已将您屏蔽或不接收来自您的消息。"})
         policy = settings.private_message_policy
         can_send = False
         if policy == 'everyone':
@@ -81,27 +145,17 @@ class NotificationViewSet(viewsets.ModelViewSet):
             can_send = True
         elif policy == 'superadmin_only' and sender.role == 'superadmin':
             can_send = True
-        elif policy == 'none' and sender.role == 'superadmin':  # 超级管理员可以覆盖 'none' 策略发送重要消息
+        elif policy == 'none' and sender.role == 'superadmin':
             can_send = True
-        # TODO: 实现 'contacts_only' 逻辑
-
         if not can_send:
             raise serializers.ValidationError({"detail": "接收者当前不接收来自您的消息。"})
-
-        # 根据角色和类型设置 can_recipient_delete (此逻辑也可在序列化器中完成)
         can_delete = True
         if recipient.role == 'student' and sender.role in ['teacher', 'admin', 'superadmin']:
-            can_delete = False  # 学生不能删除来自教职工的私信
-
+            can_delete = False
         title = self.request.data.get('title', f"来自 {sender.username} 的消息")
-
         serializer.save(
-            sender=sender,
-            recipient=recipient,
-            type='private_message',  # 此端点用于发送私信
-            title=title,
-            can_recipient_delete=can_delete,
-            can_recipient_reply=True  # 私信通常可以回复
+            sender=sender, recipient=recipient, type='private_message',
+            title=title, can_recipient_delete=can_delete, can_recipient_reply=True
         )
 
     @action(detail=False, methods=['post'], url_path='mark-all-as-read')
@@ -112,15 +166,35 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='mark-read')
     def mark_read(self, request, pk=None):
-        # 将指定ID的通知标记为已读
-        notification = get_object_or_404(Notification, pk=pk, recipient=request.user)
+        """
+        将指定ID的通知标记为已读。
+        """
+        notification = self.get_object()  # 统一使用 get_object 获取实例
+
+        # 如果是发件人自己，不做任何修改
+        if notification.sender == request.user:
+            return Response(
+                {"detail": "已加载"},
+                status=status.HTTP_200_OK
+            )
+
+        # 权限检查：只有接收者本人才能将消息标记为已读
+        if notification.recipient != request.user:
+            return Response(
+                {"detail": "您没有权限执行此操作。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         notification.mark_as_read()
-        return Response(NotificationSerializer(notification, context={'request': request}).data)
+        # 更新全局未读角标，刷新前端状态
+        # (前端在 MessageView.vue 中已经调用了 notificationStore.updateUnreadCount())
+        return Response(self.get_serializer(notification).data)
 
     @action(detail=True, methods=['post'], url_path='mark-unread')
     def mark_unread(self, request, pk=None):
-        # 将指定ID的通知标记为未读
-        notification = get_object_or_404(Notification, pk=pk, recipient=request.user)
+        notification = self.get_object()
+        if notification.recipient != request.user:
+            return Response({"detail": "您没有权限执行此操作。"}, status=status.HTTP_403_FORBIDDEN)
         notification.mark_as_unread()
         return Response(NotificationSerializer(notification, context={'request': request}).data)
 
@@ -131,8 +205,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return Response({'unread_count': count})
 
     def destroy(self, request, *args, **kwargs):
-        # 删除通知
-        notification = self.get_object()  # get_object 会基于 get_queryset 进一步筛选，确保是当前用户的
+        notification = self.get_object()
+        # 权限检查应放在此处
+        if notification.recipient != request.user:
+            return Response({"detail": "您没有权限删除此消息。"}, status=status.HTTP_403_FORBIDDEN)
         if not notification.can_recipient_delete:
             return Response({"detail": "此通知不能被删除。"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)

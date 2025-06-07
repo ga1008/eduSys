@@ -110,6 +110,12 @@ export default [
                         meta: {title: '收件箱'}
                     },
                     {
+                        path: 'sent',
+                        name: 'TeacherMessageSent',
+                        component: () => import('@/views/teacher/messages/Sent.vue'),
+                        meta: {title: '已发送'}
+                    },
+                    {
                         path: 'view/:id',
                         name: 'TeacherMessageView',
                         component: () => import('@/views/teacher/messages/MessageView.vue'),

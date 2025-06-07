@@ -87,3 +87,15 @@ export const blockContact = (userId) => request.post('/blocked-contacts/', {bloc
  * @param {number} blockId - 黑名单记录的ID
  */
 export const unblockContact = (blockId) => request.delete(`/blocked-contacts/${blockId}/`)
+
+/**
+ * 获取已发送的消息列表
+ * @param {object} params - 查询参数, e.g., { search: '关键词' }
+ */
+export const fetchSentNotifications = (params) => request.get('/messages/sent/', {params})
+
+/**
+ * 撤回消息
+ * @param {number} id - 通知ID
+ */
+export const retractMessage = (id) => request.post(`/messages/${id}/retract/`)
