@@ -99,3 +99,9 @@ export const fetchSentNotifications = (params) => request.get('/messages/sent/',
  * @param {number} id - 通知ID
  */
 export const retractMessage = (id) => request.post(`/messages/${id}/retract/`)
+
+/**
+ * 从消息中一键拉黑发件人
+ * @param {number} notificationId - 消息（通知）的ID
+ */
+export const blockSenderFromNotification = (notificationId) => request.post(`/messages/${notificationId}/block-sender/`)

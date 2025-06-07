@@ -16,6 +16,15 @@
           >
             撤回消息
           </el-button>
+          <el-button
+              v-if="!isSender"
+              type="danger"
+              plain
+              :icon="CircleClose"
+              @click="handleBlockSender"
+          >
+            屏蔽发件人
+          </el-button>
         </div>
       </template>
     </el-page-header>
@@ -50,7 +59,13 @@
 import {ref, onMounted, computed} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useUserStore} from '@/store/user'
-import {fetchNotificationById, markAsRead, replyToMessage, retractMessage} from '@/api/notifications'
+import {
+  blockSenderFromNotification,
+  fetchNotificationById,
+  markAsRead,
+  replyToMessage,
+  retractMessage
+} from '@/api/notifications'
 import {useNotificationStore} from '@/store/notifications'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {RefreshLeft} from '@element-plus/icons-vue'
@@ -101,8 +116,42 @@ const loadMessage = async () => {
   }
 }
 
+const handleBlockSender = () => {
+  if (!message.value || !message.value.sender_info) return;
+
+  const senderName = message.value.sender_info.name || message.value.sender_info.username;
+  ElMessageBox.confirm(`确定要屏蔽来自「${senderName}」的所有消息吗？`, '屏蔽确认', {
+    confirmButtonText: '确定屏蔽',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await blockSenderFromNotification(messageId);
+      ElMessage.success(`已成功屏蔽 ${senderName}`);
+      // 屏蔽后可以刷新一下黑名单列表，如果用户之后跳转到设置页能看到
+      // 如果有全局状态管理黑名单，也可以在这里更新
+    } catch (error) {
+      // 错误信息已由 request_noti.js 统一处理，此处无需重复提示
+      console.error("屏蔽失败:", error);
+    }
+  }).catch(() => {
+  });
+}
+
 const handleReply = async () => {
-  // ... 此处逻辑保持不变 ...
+  if (!replyContent.value.trim()) {
+    ElMessage.warning('回复内容不能为空')
+    return
+  }
+  replying.value = true
+  try {
+    await replyToMessage(messageId, {content: replyContent.value})
+    ElMessage.success('回复成功')
+    replyContent.value = ''
+    // 可以选择刷新当前会话或提示用户已回复
+  } finally {
+    replying.value = false
+  }
 }
 
 const handleRetract = async () => {
