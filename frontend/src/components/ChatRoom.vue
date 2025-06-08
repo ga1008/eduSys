@@ -95,6 +95,8 @@ const props = defineProps({
   }
 });
 
+const emit = defineEmits(['message-context-menu']);
+
 const userStore = useUserStore();
 const socket = ref(null);
 const messages = ref([]);
@@ -102,14 +104,12 @@ const newMessage = ref('');
 const loading = ref(true);
 const messageAreaRef = ref(null);
 
-// 分页加载历史记录
 const historyPage = ref(1);
-const hasMoreHistory = ref(true);
+const hasMoreHistory = ref(true); // 假定初始有更多历史
 const historyLoading = ref(false);
 
 const connectWebSocket = () => {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // 这里的域名和端口需要根据你的Nginx/Vite代理配置来定
   const wsUrl = `${wsProtocol}//${window.location.host}/ws/chatroom/${props.roomId}/`;
 
   socket.value = new WebSocket(wsUrl);
@@ -117,7 +117,7 @@ const connectWebSocket = () => {
   socket.value.onopen = () => {
     loading.value = false;
     ElMessage.success('已进入聊天室');
-    loadHistory(true); // 连接成功后加载第一页历史记录
+    loadHistory(true);
   };
 
   socket.value.onmessage = (event) => {
@@ -125,7 +125,20 @@ const connectWebSocket = () => {
     if (data.type === 'error') {
       ElMessage.error(data.message);
     } else {
-      messages.value.push(data);
+      // --- 这是修改后的逻辑 ---
+      if (data.is_update) {
+        // 如果是更新消息，找到并替换它
+        const index = messages.value.findIndex(m => m.id === data.id);
+        if (index !== -1) {
+          messages.value[index] = data;
+        } else {
+          // 如果本地没有这条消息（不太可能发生），就直接追加
+          messages.value.push(data);
+        }
+      } else {
+        // 如果是新消息，直接追加
+        messages.value.push(data);
+      }
       scrollToBottom();
     }
   };
@@ -140,30 +153,40 @@ const connectWebSocket = () => {
   };
 };
 
+// --- 这是修正后的核心函数 ---
 const loadHistory = async (isInitial = false) => {
   if (!hasMoreHistory.value || historyLoading.value) return;
   historyLoading.value = true;
   try {
+    // 假设API直接返回数组，我们不再关心分页对象结构
     const response = await fetchChatHistory(props.roomId, {page: historyPage.value});
-    const oldMessages = response.data.results.reverse();
-    messages.value = [...oldMessages, ...messages.value];
 
-    if (response.data.next) {
-      historyPage.value++;
+    // 检查返回的是否是数组，并且有内容
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      const oldMessages = response.data.reverse(); // API返回的是倒序，我们把它正过来
+      messages.value = [...oldMessages, ...messages.value];
+      historyPage.value++; // 假设每次请求都是新的一页
     } else {
+      // 如果返回空数组或不是数组，说明没有更多历史记录了
       hasMoreHistory.value = false;
+      if (!isInitial) {
+        ElMessage.info('没有更早的消息了');
+      }
     }
 
+    // 如果是第一次加载，滚动到底部
     if (isInitial) {
       await nextTick();
       scrollToBottom();
     }
   } catch (error) {
     ElMessage.error('加载历史消息失败');
+    console.error("History loading error:", error);
   } finally {
     historyLoading.value = false;
   }
 };
+
 
 const sendMessage = () => {
   if (!newMessage.value.trim() || !socket.value || socket.value.readyState !== WebSocket.OPEN) {
@@ -177,10 +200,7 @@ const sendMessage = () => {
 };
 
 const handleEnter = (event) => {
-  if (event.shiftKey) {
-    // Shift + Enter，允许换行 (默认行为)
-  } else {
-    // 仅 Enter，发送消息
+  if (!event.shiftKey) {
     event.preventDefault();
     sendMessage();
   }
@@ -192,13 +212,12 @@ const handleBeforeUpload = (file) => {
     ElMessage.error('上传文件大小不能超过 10MB!');
   }
   return isLt10M;
-}
+};
 
 const handleCustomUpload = async (options) => {
   const formData = new FormData();
   formData.append('file', options.file);
   try {
-    // 后端会通过celery处理并用websocket广播，这里只需调用api
     await uploadChatFile(props.roomId, formData);
     ElMessage.info('文件已发送，后台处理中...');
   } catch (error) {
@@ -207,6 +226,7 @@ const handleCustomUpload = async (options) => {
 };
 
 const getMessageClass = (msg) => {
+  if (!msg || !msg.author) return 'received'; // 容错处理
   return msg.author.user_id === userStore.user.id ? 'sent' : 'received';
 };
 
@@ -224,12 +244,9 @@ const scrollToBottom = () => {
   });
 };
 
-const emit = defineEmits(['message-context-menu']);
-
 const handleContextMenu = (event, message) => {
-  // 只允许对非系统消息进行操作
   if (message.message_type !== 'system') {
-    emit('message-context-menu', { event, message });
+    emit('message-context-menu', {event, message});
   }
 };
 

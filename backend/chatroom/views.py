@@ -10,6 +10,9 @@ from .serializers import ChatRoomSerializer, ChatMessageSerializer, ChatRoomMemb
 from .permissions import IsChatRoomAdmin
 from django.shortcuts import get_object_or_404
 from .tasks import process_chat_file_upload  # 导入Celery任务
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ChatRoomViewSet(viewsets.ReadOnlyModelViewSet):
@@ -31,22 +34,45 @@ class ChatRoomViewSet(viewsets.ReadOnlyModelViewSet):
         获取聊天室的历史消息（分页）。
         GET /api/chatrooms/{pk}/messages/
         """
-        room = self.get_object()
+        logger.info(f"[ChatRoom {pk}] 用户 {request.user.username} 请求历史消息...")
+
+        try:
+            room = self.get_object()
+            logger.info(f"[ChatRoom {pk}] 成功获取房间对象: {room.name}")
+        except Exception as e:
+            logger.error(f"[ChatRoom {pk}] 获取房间对象时失败: {e}", exc_info=True)
+            return Response({"detail": "找不到聊天室。"}, status=status.HTTP_404_NOT_FOUND)
+
         # 验证当前用户是否是成员
-        if not ChatRoomMember.objects.filter(room=room, user=request.user, is_active=True).exists():
+        is_member = ChatRoomMember.objects.filter(room=room, user=request.user, is_active=True).exists()
+        if not is_member:
+            logger.warning(f"[ChatRoom {pk}] 权限拒绝：用户 {request.user.username} 不是成员。")
             return Response({"detail": "您不是该聊天室成员。"}, status=status.HTTP_403_FORBIDDEN)
 
-        messages = ChatMessage.objects.filter(room=room, is_deleted=False).order_by('-timestamp')
+        logger.info(f"[ChatRoom {pk}] 用户 {request.user.username} 成员身份验证通过。")
 
-        # 分页处理
+        messages = ChatMessage.objects.filter(room=room, is_deleted=False).order_by('-timestamp')
+        logger.info(f"[ChatRoom {pk}] 查询到 {messages.count()} 条历史消息。")
+
         page = self.paginate_queryset(messages)
         if page is not None:
-            serializer = ChatMessageSerializer(page, many=True)
-            # 注意：分页结果是倒序的，前端需要反转来正确显示
-            return self.get_paginated_response(serializer.data)
+            try:
+                serializer = ChatMessageSerializer(page, many=True)
+                serialized_data = serializer.data  # 尝试序列化
+                logger.info(f"[ChatRoom {pk}] 成功序列化一页消息。")
+                return self.get_paginated_response(serialized_data)
+            except Exception as e:
+                logger.error(f"[ChatRoom {pk}] 序列化历史消息时出错: {e}", exc_info=True)
+                return Response({"detail": "序列化消息时发生内部错误。"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        serializer = ChatMessageSerializer(messages, many=True)
-        return Response(serializer.data)
+        # 如果不分页
+        try:
+            serializer = ChatMessageSerializer(messages, many=True)
+            logger.info(f"[ChatRoom {pk}] 成功序列化所有消息。")
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"[ChatRoom {pk}] 序列化所有历史消息时出错: {e}", exc_info=True)
+            return Response({"detail": "序列化消息时发生内部错误。"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='members')
     def list_members(self, request, pk=None):

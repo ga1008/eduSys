@@ -352,7 +352,7 @@ class StudentCourseDetailSerializer(serializers.ModelSerializer):
     hours = serializers.IntegerField(source='course.hours', read_only=True)
     teacher_name = serializers.SerializerMethodField(read_only=True)  # 使用 SerializerMethodField 以便处理教师姓名可能为空的情况
 
-    chatroom_id = serializers.IntegerField(source='chatroom.id', read_only=True, allow_null=True)
+    chatroom_id = serializers.IntegerField(source='chatroom.tcc_id', read_only=True, allow_null=True)
 
     # 直接从 TeacherCourseClass 模型获取的字段
     # textbook, syllabus, progress, start_date, end_date
