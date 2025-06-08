@@ -9,3 +9,7 @@ dotenv
 minio
 chardet
 django_celery_beat
+channels
+channels-redis
+daphne
+drf-nested-routers

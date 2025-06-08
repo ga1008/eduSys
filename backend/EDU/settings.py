@@ -67,7 +67,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'course.apps.CourseConfig',
     'django_celery_beat',
-    'notifications'
+    'notifications',
+    'channels',  # 添加 channels
+    'chatroom',
 ]
 
 MIDDLEWARE = [
@@ -154,6 +156,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'course.tasks.cleanup_old_processing_ai_submissions',
         'schedule': timedelta(hours=1),  # 每小时执行一次
     },
+
+    # 新增聊天室清理任务
+    'cleanup-chat-files-daily': {
+        'task': 'chatroom.tasks.cleanup_expired_files',
+        'schedule': timedelta(days=1),  # 每天执行一次
+    },
+    'cleanup-chat-messages-daily': {
+        'task': 'chatroom.tasks.cleanup_expired_messages',
+        'schedule': timedelta(days=1),
+    },
 }
 
 # Celery 配置示例 (根据你的需求调整)
@@ -170,15 +182,34 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     'health_check_interval': 60,  # 每60秒发送一次心跳包
-    'visibility_timeout': 3600,   # 任务可见性超时1小时
+    'visibility_timeout': 3600,  # 任务可见性超时1小时
 }
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True # 确保启动时能重试连接
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True  # 确保启动时能重试连接
 
 SESSION_COOKIE_SAMESITE = 'None'  # 允许跨站
 SESSION_COOKIE_SECURE = True  # SameSite=None 时必须使用HTTPS下的安全Cookie
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
+
+
+# ASGI Application
+# 将 Django 的 ASGI 应用指向 Channels 的路由配置
+ASGI_APPLICATION = 'EDU.asgi.application'
+
+# Channel Layers
+# 使用 Redis 作为 Channel Layer 的后端，以支持多进程/多服务器通信
+# 使用一个不同于 Celery 的 Redis 数据库，例如 3
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            # "hosts": [(REDIS_HOST, REDIS_PORT)],
+            # 如果 Redis 有密码
+            "hosts": [(f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/3")],
+        },
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
