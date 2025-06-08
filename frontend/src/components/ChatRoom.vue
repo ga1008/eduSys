@@ -8,7 +8,11 @@
           </el-button>
           <span v-if="historyLoading">正在加载...</span>
         </div>
-        <div v-for="msg in messages" :key="msg.id" class="message-item" :class="getMessageClass(msg)">
+        <div v-for="msg in messages" :key="msg.id"
+             class="message-item"
+             :class="getMessageClass(msg)"
+             @contextmenu.prevent="handleContextMenu($event, msg)"
+        >
           <div class="author-info">
             <el-tag :type="getRoleTagType(msg.author.role)" size="small" effect="dark" round>
               {{ msg.author.role === 'admin' ? '管理员' : '成员' }}
@@ -218,6 +222,15 @@ const scrollToBottom = () => {
       messageAreaRef.value.scrollTop = messageAreaRef.value.scrollHeight;
     }
   });
+};
+
+const emit = defineEmits(['message-context-menu']);
+
+const handleContextMenu = (event, message) => {
+  // 只允许对非系统消息进行操作
+  if (message.message_type !== 'system') {
+    emit('message-context-menu', { event, message });
+  }
 };
 
 onMounted(() => {

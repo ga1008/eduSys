@@ -136,6 +136,15 @@ export default [
                     }
                 ]
             },
+
+            // --- 新增聊天室路由 ---
+            {
+                path: 'chatroom/:id',
+                name: 'TeacherChatRoom',
+                component: () => import('@/views/teacher/chat/ChatRoomDetail.vue'), // 新建的组件
+                props: true, // 允许将路由参数 :id 作为 props 传入组件
+                meta: {title: '在线研讨'}
+            },
         ]
     }
 ]
