@@ -159,12 +159,12 @@ CELERY_BEAT_SCHEDULE = {
 
     # 新增聊天室清理任务
     'cleanup-chat-files-daily': {
-        'task': 'chatroom.tasks.cleanup_expired_files',
+        'task': 'chatroom.tasks.cleanup_expired_files', # 任务的完整路径
         'schedule': timedelta(days=1),  # 每天执行一次
     },
     'cleanup-chat-messages-daily': {
-        'task': 'chatroom.tasks.cleanup_expired_messages',
-        'schedule': timedelta(days=1),
+        'task': 'chatroom.tasks.cleanup_expired_messages', # 任务的完整路径
+        'schedule': timedelta(days=1), # 每天执行一次
     },
 }
 

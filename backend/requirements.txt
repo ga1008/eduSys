@@ -13,3 +13,4 @@ channels
 channels-redis
 daphne
 drf-nested-routers
+opencv-python-headless
