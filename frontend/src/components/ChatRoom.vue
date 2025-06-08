@@ -125,20 +125,7 @@ const connectWebSocket = () => {
     if (data.type === 'error') {
       ElMessage.error(data.message);
     } else {
-      // --- 这是修改后的逻辑 ---
-      if (data.is_update) {
-        // 如果是更新消息，找到并替换它
-        const index = messages.value.findIndex(m => m.id === data.id);
-        if (index !== -1) {
-          messages.value[index] = data;
-        } else {
-          // 如果本地没有这条消息（不太可能发生），就直接追加
-          messages.value.push(data);
-        }
-      } else {
-        // 如果是新消息，直接追加
-        messages.value.push(data);
-      }
+      messages.value.push(data);
       scrollToBottom();
     }
   };
