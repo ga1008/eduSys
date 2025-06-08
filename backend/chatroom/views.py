@@ -130,7 +130,7 @@ class ChatRoomViewSet(viewsets.ReadOnlyModelViewSet):
         process_chat_file_upload.delay(message.id, list(file_content), file_obj.name, content_type)
 
         # 3. 立即返回响应，告知前端上传已开始
-        return Response({"detail": "文件上传处理中...", "message_id": message.id}, status=status.HTTP_202_ACCEPTED)
+        return Response({"detail": "文件上传处理中...", "message_id": message.id}, status=status.HTTP_200_OK)
 
 
 class ChatRoomAdminViewSet(viewsets.ViewSet):

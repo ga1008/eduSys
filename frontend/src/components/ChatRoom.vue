@@ -1,5 +1,6 @@
 <template>
-  <div class="chat-room-container" v-loading="loading" element-loading-text="正在进入聊天室...">
+  <div class="chat-room-container" v-loading="loading" element-loading-text="正在进入聊天室..."
+       @click="closeContextMenu">
     <el-container class="chat-layout">
       <el-main class="message-area" ref="messageAreaRef">
         <div class="history-loader">
@@ -12,7 +13,7 @@
         <div v-for="msg in messages" :key="msg.id"
              class="message-item"
              :class="getMessageClass(msg)"
-             @contextmenu.prevent="handleContextMenu($event, msg)"
+             @contextmenu.prevent="openContextMenu($event, msg)"
         >
           <div class="author-info">
             <el-tag :type="getRoleTagType(msg.author.role)" size="small" effect="dark" round>
@@ -27,8 +28,8 @@
 
             <div v-else-if="msg.message_type === 'image'" class="message-content image">
               <el-image
-                  v-if="msg.thumbnail_path"
-                  :src="msg.thumbnail_path"
+                  v-if="msg.thumbnail_path || msg.file_path"
+                  :src="msg.thumbnail_path || msg.file_path"
                   :preview-src-list="[msg.file_path]"
                   class="chat-image" fit="cover" hide-on-click-modal preview-teleported lazy
               />
@@ -66,8 +67,8 @@
                   <Document/>
                 </el-icon>
                 <span class="file-name">{{ msg.file_original_name }}</span>
-                <el-link :href="msg.file_path" type="primary" target="_blank" :underline="false"
-                         style="margin-left: 10px;">
+                <el-link :href="msg.file_path" :download="msg.file_original_name" type="primary" target="_blank"
+                         :underline="false" style="margin-left: 10px;">
                   下载
                 </el-link>
               </div>
@@ -127,19 +128,30 @@
       <video v-if="currentVideoUrl" :src="currentVideoUrl" controls autoplay
              style="width: 100%; max-height: 70vh;"></video>
     </el-dialog>
+
+    <div v-if="contextMenu.visible" class="context-menu"
+         :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
+      <div class="context-menu-item" @click="downloadMessageFile">
+        <el-icon>
+          <Download/>
+        </el-icon>
+        <span>另存为...</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import {ref, onMounted, onUnmounted, nextTick} from 'vue';
+import {reactive, ref, onMounted, onUnmounted, nextTick} from 'vue';
 import {useUserStore} from '@/store/user';
 import {ElMessage, ElDialog} from 'element-plus';
 import {uploadChatFile, fetchChatHistory} from '@/api/chatroom';
-import {Folder, Picture, VideoPlay, Document, Loading} from '@element-plus/icons-vue';
+import {Folder, Picture, VideoPlay, Document, Loading, Download} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 const props = defineProps({roomId: {type: [String, Number], required: true}});
-const emit = defineEmits(['message-context-menu']);
+// emit 未使用，可以移除
+// const emit = defineEmits(['message-context-menu']);
 
 const userStore = useUserStore();
 const socket = ref(null);
@@ -155,6 +167,13 @@ const historyLoading = ref(false);
 const videoDialogVisible = ref(false);
 const currentVideoUrl = ref('');
 
+const contextMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  targetMessage: null,
+});
+
 const connectWebSocket = () => {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${wsProtocol}//${window.location.host}/ws/chatroom/${props.roomId}/`;
@@ -169,12 +188,14 @@ const connectWebSocket = () => {
 
   socket.value.onmessage = (event) => {
     const data = JSON.parse(event.data);
+
+    console.log("WebSocket received message:", data);
+
     if (data.type === 'error') {
       ElMessage.error(data.message);
       return;
     }
 
-    // --- 核心修正：处理消息更新 ---
     if (data.is_update) {
       const index = messages.value.findIndex(m => m.id === data.id);
       if (index !== -1) {
@@ -186,8 +207,7 @@ const connectWebSocket = () => {
       messages.value.push(data);
     }
 
-    // 如果是自己发的消息，就滚动到底部
-    if (data.author && data.author.user_id === userStore.user.id) {
+    if ((data.author && data.author.user_id === userStore.user.id) || !data.is_update) {
       scrollToBottom();
     }
   };
@@ -205,9 +225,8 @@ const loadHistory = async (isInitial = false) => {
   try {
     const response = await fetchChatHistory(props.roomId, {page: historyPage.value, page_size: 20});
 
-    // --- 核心修正：兼容纯数组和分页对象 ---
     const responseData = response.data;
-    const newMessages = Array.isArray(responseData) ? responseData : responseData.results || [];
+    const newMessages = Array.isArray(responseData) ? responseData : (responseData.results || []);
     hasMoreHistory.value = Array.isArray(responseData) ? false : !!responseData.next;
 
     if (newMessages.length > 0) {
@@ -218,7 +237,7 @@ const loadHistory = async (isInitial = false) => {
     if (isInitial) {
       await nextTick();
       scrollToBottom();
-    } else if (newMessages.length === 0) {
+    } else if (newMessages.length === 0 && !isInitial) {
       ElMessage.info('没有更早的消息了');
     }
 
@@ -254,7 +273,6 @@ const handleBeforeUpload = (file) => {
   return isLt20M;
 };
 
-// --- 核心修正：提供即时UI反馈 ---
 const handleCustomUpload = async ({file}) => {
   const tempId = `temp_${Date.now()}_${file.name}`;
   const fileType = file.type.startsWith('image') ? 'image' : (file.type.startsWith('video') ? 'video' : 'file');
@@ -289,7 +307,7 @@ const handleCustomUpload = async ({file}) => {
     }
 
   } catch (error) {
-    ElMessage.error(`文件 ${file.name} 发送失败`);
+    ElMessage.error(`文件 ${file.name} 发送失败: ${error.response?.data?.detail || error.message}`);
     const msgIndex = messages.value.findIndex(m => m.id === tempId);
     if (msgIndex !== -1) {
       messages.value.splice(msgIndex, 1);
@@ -319,20 +337,65 @@ const scrollToBottom = () => {
   });
 };
 
-const handleContextMenu = (event, message) => {
-  if (message.message_type !== 'system') {
-    emit('message-context-menu', {event, message});
+const openContextMenu = (event, message) => {
+  if (message.message_type !== 'image' && message.message_type !== 'file' && message.message_type !== 'video') {
+    return;
   }
+
+  contextMenu.targetMessage = message;
+  contextMenu.x = event.clientX;
+  contextMenu.y = event.clientY;
+  contextMenu.visible = true;
 };
 
-onMounted(connectWebSocket);
+const closeContextMenu = () => {
+  contextMenu.visible = false;
+  contextMenu.targetMessage = null;
+};
+
+const downloadMessageFile = () => {
+  const message = contextMenu.targetMessage;
+  if (!message || !message.file_path) {
+    closeContextMenu();
+    return;
+  }
+
+  fetch(message.file_path)
+      .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok.');
+        return response.blob();
+      })
+      .then(blob => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = message.file_original_name || 'download';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+      }).catch(err => {
+    console.error("Download failed:", err);
+    ElMessage.error("文件下载失败，可能链接已过期或网络错误。");
+  });
+
+  closeContextMenu();
+};
+
+onMounted(() => {
+  connectWebSocket();
+  window.addEventListener('click', closeContextMenu);
+});
+
 onUnmounted(() => {
-  if (socket.value) socket.value.close();
+  if (socket.value) {
+    socket.value.close();
+  }
+  window.removeEventListener('click', closeContextMenu);
 });
 </script>
 
-
 <style scoped>
+/* 样式部分与上一版相同，此处省略以保持简洁。请沿用上一版回复中的 <style> 部分。 */
 .chat-room-container {
   height: 75vh;
   display: flex;
@@ -401,6 +464,7 @@ onUnmounted(() => {
 .sent .message-content-wrapper {
   background-color: #85e085;
   color: black;
+  border-top-right-radius: 0;
 }
 
 .received .message-content-wrapper {
@@ -493,5 +557,30 @@ onUnmounted(() => {
   margin: 10px 0;
   color: #999;
   font-size: 12px;
+}
+
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, .1);
+  z-index: 3000;
+  padding: 5px 0;
+}
+
+.context-menu-item {
+  list-style: none;
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background-color: #ecf5ff;
+  color: #409eff;
 }
 </style>
