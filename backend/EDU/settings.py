@@ -69,7 +69,7 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'notifications',
     'channels',  # 添加 channels
-    'chatroom',
+    'chatroom.apps.ChatroomConfig',
 ]
 
 MIDDLEWARE = [
