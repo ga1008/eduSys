@@ -3,6 +3,22 @@ from rest_framework import serializers
 from .models import Class, Course, User
 
 
+class UserSimpleSerializer(serializers.ModelSerializer):
+    real_name = serializers.CharField(source='get_real_name', read_only=True)
+    avatar = serializers.ImageField(source='get_avatar', read_only=True)
+
+    def get_real_name(self, obj):
+        return obj.name if obj.name else obj.username
+
+    def get_avatar(self, obj):
+        # obj.avatar 是minio的id，需要先获取对应的URL
+        return obj.avatar if obj.avatar else None
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'real_name', 'avatar']
+
+
 class ClassSerializer(serializers.ModelSerializer):
     # 课程多对多字段：提交时使用课程ID列表；读取时默认返回课程ID列表
     courses = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), many=True, required=False)

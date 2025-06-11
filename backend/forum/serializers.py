@@ -1,0 +1,105 @@
+# backend/forum/serializers.py
+
+from rest_framework import serializers
+from .models import Tag, Post, PostFile, Comment, PostLike
+from education.serializers import UserSimpleSerializer
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['id', 'name']
+
+
+class PostFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostFile
+        fields = ['id', 'file_path', 'original_name', 'file_type', 'thumbnail_path']
+
+
+class CommentAuthorSerializer(UserSimpleSerializer):
+    """用于评论中显示作者信息的序列化器，处理匿名"""
+
+    class Meta(UserSimpleSerializer.Meta):
+        fields = ['id', 'username', 'real_name', 'avatar']
+
+
+class ReplySerializer(serializers.ModelSerializer):
+    """用于嵌套显示的回复序列化器"""
+    author = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'author', 'content', 'is_anonymous', 'is_ai_generated', 'created_at']
+
+    def get_author(self, obj):
+        if obj.is_anonymous and not obj.is_ai_generated:
+            return {'id': None, 'username': '匿名用户', 'real_name': '匿名用户', 'avatar': None}
+        if obj.is_ai_generated:
+            return {'id': 'ai', 'username': 'AI 助教', 'real_name': 'AI 助教', 'avatar': None}  # 前端可根据 id='ai' 显示特定头像
+        return CommentAuthorSerializer(obj.author).data
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+    replies = ReplySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'author', 'content', 'is_anonymous', 'is_ai_generated', 'parent_comment', 'created_at',
+                  'replies']
+        extra_kwargs = {
+            'parent_comment': {'write_only': True}
+        }
+
+    def get_author(self, obj):
+        if obj.is_anonymous and not obj.is_ai_generated:
+            return {'id': None, 'username': '匿名用户', 'real_name': '匿名用户', 'avatar': None}
+        if obj.is_ai_generated:
+            return {'id': 'ai', 'username': 'AI 助教', 'real_name': 'AI 助教', 'avatar': None}
+        return CommentAuthorSerializer(obj.author).data
+
+
+class PostSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+    tags = TagSerializer(many=True, read_only=True)
+    files = PostFileSerializer(many=True, read_only=True)
+    comments = CommentSerializer(many=True, read_only=True)
+    is_liked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Post
+        fields = [
+            'id', 'title', 'content', 'author', 'tags', 'files', 'comments',
+            'is_anonymous', 'visibility', 'allow_comments', 'allow_ai_comments',
+            'view_count', 'like_count', 'comment_count', 'is_liked',
+            'created_at', 'updated_at'
+        ]
+
+    def get_author(self, obj):
+        user = self.context['request'].user
+        # 规则：1. 作者自己可见 2. 超管可见 3. 老师对其学生可见
+        can_view_real_name = (
+                user.is_superuser or
+                obj.author == user or
+                (user.role == 'teacher' and obj.author.role == 'student' and
+                 obj.author.class_enrolled in user.teacher_classes.all())
+        )
+
+        if obj.is_anonymous and not can_view_real_name:
+            return {'id': None, 'username': '匿名用户', 'real_name': '匿名用户', 'avatar': None}
+
+        return UserSimpleSerializer(obj.author).data
+
+    def get_is_liked(self, obj):
+        user = self.context['request'].user
+        if user.is_authenticated:
+            return PostLike.objects.filter(post=obj, user=user).exists()
+        return False
+
+    def validate(self, data):
+        # 规则：老师和超管不能匿名发帖
+        user = self.context['request'].user
+        if user.role in ['teacher', 'admin'] and data.get('is_anonymous', False):
+            raise serializers.ValidationError("教师和管理员不允许匿名发帖。")
+        return data

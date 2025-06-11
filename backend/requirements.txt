@@ -14,3 +14,4 @@ channels-redis
 daphne
 drf-nested-routers
 opencv-python-headless
+django_filter

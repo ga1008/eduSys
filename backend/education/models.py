@@ -78,6 +78,12 @@ class User(AbstractUser):
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
     phone = models.CharField(max_length=15, null=True, blank=True)
     qq = models.CharField(max_length=15, null=True, blank=True)
+    avatar = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name="头像路径 (MinIO)"
+    )
     class_enrolled = models.ForeignKey(
         'Class',
         on_delete=models.SET_NULL,

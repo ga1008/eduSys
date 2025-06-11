@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'notifications',
     'channels',  # 添加 channels
     'chatroom.apps.ChatroomConfig',
+    'forum.apps.ForumConfig',
 ]
 
 MIDDLEWARE = [
