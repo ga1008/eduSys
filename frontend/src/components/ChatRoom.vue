@@ -3,6 +3,9 @@
        @click="closeContextMenu">
     <el-container class="chat-layout">
       <el-main class="message-area" ref="messageAreaRef">
+        <div class="online-status">
+          在线人数: {{ onlineCount }}
+        </div>
         <div class="history-loader">
           <el-button v-if="hasMoreHistory && !historyLoading" @click="loadHistory()" size="small" round>
             加载更早的消息
@@ -174,6 +177,8 @@ const contextMenu = reactive({
   targetMessage: null,
 });
 
+const onlineCount = ref(0);
+
 const connectWebSocket = () => {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${wsProtocol}//${window.location.host}/ws/chatroom/${props.roomId}/`;
@@ -190,6 +195,12 @@ const connectWebSocket = () => {
     const data = JSON.parse(event.data);
 
     console.log("WebSocket received message:", data);
+
+    // --- 功能新增：处理人数更新事件 ---
+    if (data.type === 'user_count_update') {
+      onlineCount.value = data.count;
+      return; // 处理完后直接返回
+    }
 
     if (data.type === 'error') {
       ElMessage.error(data.message);
@@ -395,7 +406,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 样式部分与上一版相同，此处省略以保持简洁。请沿用上一版回复中的 <style> 部分。 */
 .chat-room-container {
   height: 75vh;
   display: flex;
@@ -412,10 +422,35 @@ onUnmounted(() => {
 }
 
 .message-area {
+  position: relative; /* 粘性定位需要一个父级定位上下文 */
   flex-grow: 1;
   padding: 20px;
   background-color: #f5f7fa;
   overflow-y: auto;
+}
+
+/* --- 核心修正 --- */
+.online-status {
+  position: sticky; /* 将 absolute 改为 sticky */
+  top: 10px; /* 粘在距离顶部 10px 的位置 */
+  float: right; /* 使用 float 使其靠右，避免影响布局流 */
+  margin-right: 20px; /* 调整右边距 */
+  background-color: rgba(0, 0, 0, 0.1);
+  color: #606266;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  z-index: 10;
+  width: fit-content; /* 宽度自适应内容 */
+  margin-bottom: 10px; /* 与下方历史消息按钮保持间距 */
+}
+
+.history-loader {
+  clear: both; /* 清除浮动，确保历史消息按钮在下一行 */
+  text-align: center;
+  margin: 10px 0;
+  color: #999;
+  font-size: 12px;
 }
 
 .message-item {
@@ -550,13 +585,6 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
-}
-
-.history-loader {
-  text-align: center;
-  margin: 10px 0;
-  color: #999;
-  font-size: 12px;
 }
 
 .context-menu {
