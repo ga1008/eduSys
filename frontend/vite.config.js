@@ -42,12 +42,17 @@ export default defineConfig({
                 rewrite: (path) => path.replace(/^\/chat\/api/, '/chat/api')
             },
 
-            // 2. 为 WebSocket 连接添加代理
-            // 你的 ChatRoom.vue 组件会请求 /ws/chatroom/...
+            // --- 新增论坛 API 代理规则 ---
+            '/forum/api': {
+                target: 'http://127.0.0.1:8000', // 你的 Django 后端地址
+                changeOrigin: true,
+            },
+
+            // --- WebSocket 代理 ---
             '/ws': {
-                target: 'ws://127.0.0.1:8000', // 目标是Daphne服务
-                ws: true, // 关键：必须设置为 true 来启用 WebSocket 代理
-                changeOrigin: true // 建议开启
+                target: 'ws://127.0.0.1:8000',
+                ws: true,
+                changeOrigin: true
             }
         }
     }

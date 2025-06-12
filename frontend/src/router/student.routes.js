@@ -102,7 +102,22 @@ export default [
                         meta: {title: '消息设置'}
                     }
                 ]
-            }
+            },
+
+            // --- 新增论坛相关路由 ---
+            {
+                path: 'forum',
+                name: 'StudentForum',
+                component: () => import('@/views/student/forum/ForumList.vue'), // 论坛列表页
+                meta: {title: '校园论坛'}
+            },
+            {
+                path: 'forum/post/:postId', // 帖子详情页
+                name: 'StudentPostDetail',
+                component: () => import('@/views/student/forum/PostDetail.vue'), // 帖子详情页组件
+                props: true,
+                meta: {title: '帖子详情'}
+            },
         ]
     }
 ]

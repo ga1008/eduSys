@@ -13,6 +13,7 @@
 import {computed, onMounted, onUnmounted} from 'vue';
 import {useNotificationStore} from '@/store/notifications';
 import Sidebar from '@/components/Sidebar.vue';
+import {Comment as ForumIcon} from '@element-plus/icons-vue'; // 引入一个合适的图标
 
 // 实例化通知 store
 const notificationStore = useNotificationStore();
@@ -22,6 +23,7 @@ const menuItems = [
   {label: '首页', path: '/student'},
   {label: '我的课程', path: '/student/courses'},
   {label: '我的作业', path: '/student/assignments'},
+  {label: '校园论坛', path: '/student/forum', icon: ForumIcon}, // 新增论坛菜单项
   {label: '信息中心', path: '/student/messages'},
 ];
 
