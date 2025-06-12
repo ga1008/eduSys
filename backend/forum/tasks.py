@@ -49,7 +49,7 @@ def trigger_ai_comment(self, post_id):
     )
 
     # 3. 使用 httpx 直接调用 AI 服务 (与 notifications/tasks.py 逻辑相同)
-    ai_service_url = f"{settings.AI_SERVICE_URL}/generate_text"
+    ai_service_url = settings.AI_SERVICE_URL
     payload = {
         "messages": [
             {"role": "system", "content": system_prompt},

@@ -39,6 +39,9 @@ MINIO_USER = os.getenv('MINIO_USER', 'minioadmin')
 MINIO_ACCESS_KEY = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
 MINIO_BUCKET = os.getenv('MINIO_BUCKET', 'edu-bucket')
 
+AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', 'http://localhost:8080/api/v1/chat/completions')
+AI_SERVICE_STATUS_URL = os.getenv('AI_SERVICE_STATUS_URL', 'http://localhost:8080/api/v1/task_status/')
+
 MINIO_ENDPOINT = f'{MINIO_HOST}:{MINIO_PORT}'
 
 DEPLOY_HOST = os.getenv('DEPLOY_HOST', 'localhost')

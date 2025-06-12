@@ -16,7 +16,8 @@
             <span class="post-time">{{ formatTime(post.created_at) }}</span>
           </div>
           <div class="post-actions">
-            <el-button :type="post.is_liked ? 'primary' : ''" :icon="Pointer" @click="toggleLike" round>
+            <el-button :type="post.is_liked ? 'primary' : ''" :icon="StarFilled"
+                       @click="toggleLike" round>
               {{ post.like_count }}
             </el-button>
           </div>
@@ -74,7 +75,7 @@ import {onMounted, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import {ElMessage} from 'element-plus';
 import {createComment, fetchPostById, likePost, unlikePost} from '@/api/forum';
-import {Pointer} from '@element-plus/icons-vue';
+import {Pointer, Star, StarFilled} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 const route = useRoute();
