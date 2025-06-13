@@ -1,6 +1,8 @@
 # backend/forum/serializers.py
 
 from rest_framework import serializers
+
+from utils.minio_tools import MinioClient
 from .models import Tag, Post, PostFile, Comment, PostLike
 from education.serializers import UserSimpleSerializer
 
@@ -12,9 +14,25 @@ class TagSerializer(serializers.ModelSerializer):
 
 
 class PostFileSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PostFile
-        fields = ['id', 'file_path', 'original_name', 'file_type', 'thumbnail_path']
+        fields = ['id', 'original_name', 'file_type', 'file_url', 'thumbnail_url']
+
+    def get_file_url(self, obj):
+        # 生成带签名的访问URL
+        if obj.file_path:
+            client = MinioClient()
+            return client.get_file_url(obj.file_path)
+        return None
+
+    def get_thumbnail_url(self, obj):
+        if obj.thumbnail_path:
+            client = MinioClient()
+            return client.get_file_url(obj.thumbnail_path)
+        return self.get_file_url(obj)  # 如果没缩略图，返回原图URL
 
 
 class CommentAuthorSerializer(UserSimpleSerializer):
@@ -43,11 +61,14 @@ class ReplySerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
     replies = ReplySerializer(many=True, read_only=True)
+    is_liked = serializers.BooleanField(read_only=True, default=False)
 
     class Meta:
         model = Comment
         fields = ['id', 'author', 'content', 'is_anonymous', 'is_ai_generated', 'parent_comment', 'created_at',
-                  'replies']
+                  'replies',
+                  'like_count', 'is_liked',
+                  ]
         extra_kwargs = {
             'parent_comment': {'write_only': True}
         }
@@ -63,7 +84,7 @@ class CommentSerializer(serializers.ModelSerializer):
 class PostSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
     tags = TagSerializer(many=True, read_only=True)
-    files = PostFileSerializer(many=True, read_only=True)
+    files = PostFileSerializer(many=True, read_only=True)  # 修改：使用新的序列化器
     comments = CommentSerializer(many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
 
@@ -73,7 +94,7 @@ class PostSerializer(serializers.ModelSerializer):
             'id', 'title', 'content', 'author', 'tags', 'files', 'comments',
             'is_anonymous', 'visibility', 'allow_comments', 'allow_ai_comments',
             'view_count', 'like_count', 'comment_count', 'is_liked',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 'files'
         ]
 
     def get_author(self, obj):

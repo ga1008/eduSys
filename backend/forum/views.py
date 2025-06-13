@@ -1,19 +1,19 @@
 # backend/forum/views.py
-
-from rest_framework import viewsets, status
+from django.db.models.functions import Coalesce
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import F, Q, Count
+from django.db.models import F, Q, Count, OuterRef, Exists, Sum, IntegerField
 from datetime import timedelta
 from django.utils import timezone
 
-from .models import Post, Comment, Tag, PostVisibilityRule
+from .models import Post, Comment, Tag, PostVisibilityRule, CommentLike
 from .serializers import PostSerializer, CommentSerializer, TagSerializer
 from .permissions import CanManageForumContent
-from .tasks import trigger_ai_comment
+from .tasks import trigger_ai_comment, process_forum_file_upload
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -51,6 +51,12 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         post = serializer.save(author=self.request.user)
+        files = self.request.FILES.getlist('files')
+
+        for file_obj in files:
+            # 异步处理文件上传和缩略图生成
+            process_forum_file_upload.delay(post.id, list(file_obj.read()), file_obj.name, file_obj.content_type)
+
         if post.allow_ai_comments:
             trigger_ai_comment.delay(post.id)
 
@@ -87,6 +93,21 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(hot_posts, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'])
+    def hot(self, request):
+        period = request.query_params.get('period', 'week')
+        days = 30 if period == 'month' else 7
+        since = timezone.now() - timedelta(days=days)
+
+        hot_posts = self.get_queryset().filter(created_at__gte=since).annotate(
+            # Coalesce(Sum(...), 0) 防止没有评论时Sum返回NULL导致错误
+            total_likes=F('like_count') + Coalesce(Sum('comments__like_count'), 0, output_field=IntegerField()),
+            hotness=F('total_likes') + F('comment_count') * 2
+        ).order_by('-hotness', '-created_at')[:10]
+
+        serializer = self.get_serializer(hot_posts, many=True)
+        return Response(serializer.data)
+
 
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all().select_related('author').prefetch_related('replies')
@@ -94,13 +115,63 @@ class CommentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanManageForumContent]
 
     def get_queryset(self):
-        # 确保只返回特定帖子下的评论
-        return self.queryset.filter(post_id=self.kwargs['post_pk'])
+        post_pk = self.kwargs['post_pk']
+        user = self.request.user
+
+        # 标记用户是否点赞
+        user_likes = CommentLike.objects.filter(
+            comment=OuterRef('pk'),
+            user=user
+        )
+
+        # 1. 获取该帖子的所有一级评论 (parent_comment is NULL)
+        base_queryset = Comment.objects.filter(
+            post_id=post_pk,
+            parent_comment__isnull=True
+        ).annotate(
+            is_liked=Exists(user_likes)
+        )
+
+        # 2. 按点赞数倒序，创建时间正序排序
+        return base_queryset.order_by('-like_count', 'created_at')
 
     def perform_create(self, serializer):
         post = Post.objects.get(pk=self.kwargs['post_pk'])
         serializer.save(author=self.request.user, post=post)
         # 更新帖子评论数
+        post.comment_count = F('comment_count') + 1
+        post.save(update_fields=['comment_count'])
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def like(self, request, post_pk=None, pk=None):
+        comment = self.get_object()
+        _, created = CommentLike.objects.get_or_create(user=request.user, comment=comment)
+        if created:
+            comment.like_count = F('like_count') + 1
+            comment.save(update_fields=['like_count'])
+        return Response({'status': 'liked', 'like_count': comment.like_count + (1 if created else 0)},
+                        status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unlike(self, request, post_pk=None, pk=None):
+        comment = self.get_object()
+        deleted_count, _ = CommentLike.objects.filter(user=request.user, comment=comment).delete()
+        if deleted_count > 0:
+            comment.like_count = F('like_count') - 1
+            comment.save(update_fields=['like_count'])
+        return Response({'status': 'unliked', 'like_count': comment.like_count - (1 if deleted_count > 0 else 0)},
+                        status=status.HTTP_200_OK)
+
+    def perform_create(self, serializer):
+        post = Post.objects.get(pk=self.kwargs['post_pk'])
+        # 检查父评论是否存在于同一个帖子下
+        parent_comment_id = self.request.data.get('parent_comment')
+        if parent_comment_id:
+            parent_comment = Comment.objects.filter(id=parent_comment_id, post=post).first()
+            if not parent_comment:
+                raise serializers.ValidationError("回复的评论不存在或不属于当前帖子。")
+
+        comment = serializer.save(author=self.request.user, post=post)
         post.comment_count = F('comment_count') + 1
         post.save(update_fields=['comment_count'])
 

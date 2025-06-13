@@ -40,9 +40,13 @@ export const fetchPostById = (postId) => forumService.get(`/posts/${postId}/`);
 
 /**
  * 创建新帖子
- * @param {object} postData - { title, content, is_anonymous, allow_comments, allow_ai_comments }
+ * @param {object} formData - { title, content, is_anonymous, allow_comments, allow_ai_comments }
  */
-export const createPost = (postData) => forumService.post('/posts/', postData);
+export const createPost = (formData) => forumService.post('/posts/', formData, {
+    headers: {
+        'Content-Type': 'multipart/form-data',
+    },
+});
 
 /**
  * 更新帖子

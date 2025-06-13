@@ -24,7 +24,7 @@ class Post(models.Model):
     ]
 
     title = models.CharField(max_length=200, verbose_name="标题")
-    content = models.TextField(verbose_name="内容")
+    content = models.TextField(verbose_name="内容 (Markdown/HTML)")
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='forum_posts', verbose_name="作者")
     tags = models.ManyToManyField(Tag, blank=True, related_name='posts', verbose_name="标签")
 
@@ -52,17 +52,17 @@ class Post(models.Model):
 
 
 class PostFile(models.Model):
-    """帖子附件，支持图片、视频、文件"""
     FILE_TYPE_CHOICES = [
         ('IMAGE', '图片'),
         ('VIDEO', '视频'),
         ('FILE', '文件'),
+        ('GIF', '动图'),
     ]
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='files')
-    file_path = models.CharField(max_length=255, verbose_name="文件路径 (MinIO)")
+    file_path = models.CharField(max_length=512, verbose_name="Minio文件路径")
     original_name = models.CharField(max_length=255, verbose_name="原始文件名")
     file_type = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, verbose_name="文件类型")
-    thumbnail_path = models.CharField(max_length=255, blank=True, null=True, verbose_name="缩略图路径")
+    thumbnail_path = models.CharField(max_length=512, blank=True, null=True, verbose_name="缩略图路径")
 
     def __str__(self):
         return self.original_name
@@ -72,7 +72,8 @@ class Comment(models.Model):
     """帖子评论"""
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments', verbose_name="所属帖子")
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='forum_comments', verbose_name="评论者")
-    content = models.TextField(verbose_name="评论内容")
+    content = models.TextField(verbose_name="评论内容 (Markdown/HTML)")
+    like_count = models.PositiveIntegerField(default=0, verbose_name="点赞数")
 
     # 支持多级评论
     parent_comment = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
@@ -99,6 +100,16 @@ class PostLike(models.Model):
 
     class Meta:
         unique_together = ('user', 'post')  # 每人只能点赞一次
+
+
+class CommentLike(models.Model):
+    """评论点赞记录"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name='likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'comment')
 
 
 class PostVisibilityRule(models.Model):

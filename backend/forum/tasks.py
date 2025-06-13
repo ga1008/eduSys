@@ -1,4 +1,5 @@
 # backend/forum/tasks.py
+from io import BytesIO
 
 import httpx
 import logging
@@ -6,10 +7,58 @@ from celery import shared_task
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
-from .models import Post, Comment
+from utils.minio_tools import MinioClient
+from .models import Post, Comment, PostFile
+
+try:
+    from PIL import Image
+
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+@shared_task(name="forum.tasks.process_forum_file_upload")
+def process_forum_file_upload(post_id, file_content_list, original_name, content_type):
+    # ... 逻辑与 chatroom.tasks.process_chat_file_upload 非常相似 ...
+    # 主要区别是创建 PostFile 对象而不是 ChatMessage
+
+    post = Post.objects.get(id=post_id)
+    file_content = bytes(file_content_list)
+    minio_client = MinioClient()
+    object_name = minio_client.upload_file(file_data=file_content)
+
+    file_type = 'FILE'
+    if 'image/gif' in content_type:
+        file_type = 'GIF'
+    elif 'image' in content_type:
+        file_type = 'IMAGE'
+    elif 'video' in content_type:
+        file_type = 'VIDEO'
+
+    thumbnail_object_name = None
+    try:
+        img = Image.open(BytesIO(file_content))
+        img.thumbnail((256, 256))
+        thumb_io = BytesIO()
+        img_format = 'PNG' if img.mode in ('RGBA', 'P') else 'JPEG'
+        img.save(thumb_io, format=img_format)
+        thumb_io.seek(0)
+        thumbnail_object_name = minio_client.upload_file(file_data=thumb_io.read())
+    except Exception as e:
+        logger.error(f"为图片 {original_name} 生成缩略图失败: {e}")
+
+    PostFile.objects.create(
+        post=post,
+        file_path=object_name,
+        original_name=original_name,
+        file_type=file_type,
+        thumbnail_path=thumbnail_object_name
+    )
+    logger.info(f"成功处理帖子 {post_id} 的附件: {original_name}")
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)  # bind=True 以便使用 self.retry

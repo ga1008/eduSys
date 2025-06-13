@@ -79,7 +79,24 @@
           <el-input v-model="newPostForm.title" placeholder="一个引人注目的标题"/>
         </el-form-item>
         <el-form-item label="内容" prop="content" required>
-          <el-input type="textarea" :rows="8" v-model="newPostForm.content" placeholder="分享你的想法..."/>
+          <v-md-editor
+              v-model="newPostForm.content"
+              height="300px"
+              placeholder="分享你的想法，支持Markdown，可拖拽上传图片..."
+          ></v-md-editor>
+        </el-form-item>
+        <el-form-item label="附件">
+          <el-upload
+              v-model:file-list="newPostForm.files"
+              action="#"
+              :auto-upload="false"
+              multiple
+              drag>
+            <el-icon class="el-icon--upload">
+              <upload-filled/>
+            </el-icon>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+          </el-upload>
         </el-form-item>
         <el-form-item label="发帖身份">
           <el-switch v-model="newPostForm.is_anonymous" active-text="匿名发布" inactive-text="实名发布"/>
@@ -100,7 +117,8 @@
 <script setup>
 import {onMounted, ref} from 'vue';
 import {useRouter} from 'vue-router';
-import {ElMessage} from 'element-plus';
+import {ElMessage,} from 'element-plus';
+import '@kangc/v-md-editor';
 import {createPost, fetchHotPosts, fetchPosts, fetchTags} from '@/api/forum';
 import {ChatDotRound, Edit, StarFilled, View} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
@@ -175,6 +193,18 @@ const handleCreatePost = async () => {
     ElMessage.warning('标题和内容不能为空！');
     return;
   }
+  // ... 校验逻辑 ...
+  const formData = new FormData();
+  formData.append('title', newPostForm.value.title);
+  formData.append('content', newPostForm.value.content); // Markdown内容
+  formData.append('is_anonymous', newPostForm.value.is_anonymous);
+  // ... 其他表单字段 ...
+
+  // 添加文件
+  newPostForm.value.files.forEach(file => {
+    formData.append('files', file.raw); // 添加原始文件对象
+  });
+
   creatingPost.value = true;
   try {
     await createPost(newPostForm.value);

@@ -24,8 +24,27 @@
         </div>
       </template>
 
-      <div class="post-content" v-html="post.content"></div>
+      <div class="post-content" v-html="purifiedContent"></div>
       <!-- 这里可以添加显示帖子文件的逻辑 -->
+      <div class="post-attachments" v-if="post.files && post.files.length > 0">
+        <h4>附件：</h4>
+        <div v-for="file in post.files" :key="file.id" class="attachment-item">
+          <el-image
+              v-if="file.file_type === 'IMAGE' || file.file_type === 'GIF'"
+              :src="file.thumbnail_url || file.file_url"
+              :preview-src-list="[file.file_url]"
+              fit="cover"
+              class="attachment-thumbnail"
+          />
+          <div v-else-if="file.file_type === 'VIDEO'" class="video-thumbnail" @click="playVideo(file.file_url)">
+            <el-image :src="file.thumbnail_url" fit="cover"/>
+            <el-icon class="play-icon">
+              <VideoPlay/>
+            </el-icon>
+          </div>
+          <el-link v-else :href="file.file_url" target="_blank">{{ file.original_name }}</el-link>
+        </div>
+      </div>
 
     </el-card>
 
@@ -52,31 +71,86 @@
       </div>
 
       <!-- 评论列表 -->
-      <div v-for="comment in post?.comments" :key="comment.id" class="comment-item">
-        <el-avatar :size="32" :src="comment.author.avatar || defaultAvatar"/>
-        <div class="comment-body">
-          <div class="comment-header">
-            <span class="comment-author">{{ comment.author.real_name || '匿名用户' }}</span>
-            <el-tag v-if="comment.is_ai_generated" type="primary" size="small" effect="dark">AI助教</el-tag>
-          </div>
-          <div class="comment-content">{{ comment.content }}</div>
-          <div class="comment-footer">
-            <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
-            <!-- 回复功能可以后续添加 -->
+      <div v-if="post && post.comments">
+        <div v-if="pinnedComments.length > 0" class="pinned-comments">
+          <div class="pinned-header">热门评论</div>
+          <div v-for="(comment, index) in pinnedComments" :key="comment.id" class="comment-item">
+            <span class="floor-number">#{{ getFloorNumber(comment) }}</span>
+            <el-button text :icon="comment.is_liked ? StarFilled : Star" @click="toggleCommentLike(comment)">
+              {{ comment.like_count }}
+            </el-button>
           </div>
         </div>
+
+        <el-divider v-if="pinnedComments.length > 0 && regularComments.length > 0"/>
+
+        <div v-for="(comment, index) in regularComments" :key="comment.id" class="comment-item">
+          <span class="floor-number">#{{ getFloorNumber(comment) }}</span>
+          <div v-if="comment.parent_comment" class="reply-to">
+            回复 #{{ getFloorNumber(findCommentById(comment.parent_comment)) }}
+          </div>
+          <el-button text :icon="comment.is_liked ? StarFilled : Star" @click="toggleCommentLike(comment)">
+            {{ comment.like_count }}
+          </el-button>
+        </div>
       </div>
+
     </el-card>
   </div>
 </template>
 
 <script setup>
-import {onMounted, ref} from 'vue';
+import {computed, onMounted, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import {ElMessage} from 'element-plus';
 import {createComment, fetchPostById, likePost, unlikePost} from '@/api/forum';
 import {Pointer, Star, StarFilled} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
+import DOMPurify from 'dompurify';
+import MarkdownIt from 'markdown-it';
+import {likeComment, unlikeComment} from '@/api/forum'; // 需要在api/forum.js中新增
+
+
+const md = new MarkdownIt();
+const allComments = computed(() => post.value?.comments || []);
+
+const pinnedComments = computed(() => {
+  // 假设后端已按点赞排序，取前3个且点赞数>0的
+  return allComments.value.slice(0, 3).filter(c => c.like_count > 0);
+});
+
+const regularComments = computed(() => {
+  const pinnedIds = new Set(pinnedComments.value.map(c => c.id));
+  return allComments.value.filter(c => !pinnedIds.has(c.id));
+});
+
+const getFloorNumber = (comment) => {
+  const index = allComments.value.findIndex(c => c.id === comment.id);
+  return index + 1;
+};
+
+const findCommentById = (id) => {
+  return allComments.value.find(c => c.id === id);
+};
+
+const toggleCommentLike = async (comment) => {
+  try {
+    const apiCall = comment.is_liked ? unlikeComment : likeComment;
+    const response = await apiCall(postId, comment.id); // API需要支持
+    comment.is_liked = !comment.is_liked;
+    comment.like_count = response.data.like_count;
+  } catch (e) {
+    ElMessage.error("点赞失败");
+  }
+}
+
+const purifiedContent = computed(() => {
+  if (post.value && post.value.content) {
+    const rawHtml = md.render(post.value.content);
+    return DOMPurify.sanitize(rawHtml);
+  }
+  return '';
+});
 
 const route = useRoute();
 const router = useRouter();
