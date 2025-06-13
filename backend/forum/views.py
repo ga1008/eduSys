@@ -2,6 +2,7 @@
 from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
@@ -23,6 +24,7 @@ class PostViewSet(viewsets.ModelViewSet):
     filterset_fields = ['tags__name']
     search_fields = ['title', 'content']
     ordering_fields = ['created_at', 'like_count', 'comment_count', 'view_count']
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user
@@ -51,11 +53,17 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         post = serializer.save(author=self.request.user)
-        files = self.request.FILES.getlist('files')
 
+        # 处理上传的文件
+        files = self.request.FILES.getlist('files')
         for file_obj in files:
-            # 异步处理文件上传和缩略图生成
-            process_forum_file_upload.delay(post.id, list(file_obj.read()), file_obj.name, file_obj.content_type)
+            # 将文件处理移交Celery异步执行
+            process_forum_file_upload.delay(
+                post.id,
+                list(file_obj.read()),  # 文件内容转为列表以被json序列化
+                file_obj.name,
+                file_obj.content_type
+            )
 
         if post.allow_ai_comments:
             trigger_ai_comment.delay(post.id)
@@ -149,8 +157,19 @@ class CommentViewSet(viewsets.ModelViewSet):
         if created:
             comment.like_count = F('like_count') + 1
             comment.save(update_fields=['like_count'])
-        return Response({'status': 'liked', 'like_count': comment.like_count + (1 if created else 0)},
-                        status=status.HTTP_200_OK)
+        # 刷新并返回最新的点赞数
+        comment.refresh_from_db()
+        return Response({'status': 'liked', 'like_count': comment.like_count}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unlike(self, request, post_pk=None, pk=None):
+        comment = self.get_object()
+        deleted_count, _ = CommentLike.objects.filter(user=request.user, comment=comment).delete()
+        if deleted_count > 0:
+            comment.like_count = F('like_count') - 1
+            comment.save(update_fields=['like_count'])
+        comment.refresh_from_db()
+        return Response({'status': 'unliked', 'like_count': comment.like_count}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def unlike(self, request, post_pk=None, pk=None):

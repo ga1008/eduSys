@@ -82,7 +82,7 @@
           <v-md-editor
               v-model="newPostForm.content"
               height="300px"
-              placeholder="分享你的想法，支持Markdown，可拖拽上传图片..."
+              placeholder="分享你的想法，支持Markdown，可拖拽上传图片及附件..."
           ></v-md-editor>
         </el-form-item>
         <el-form-item label="附件">

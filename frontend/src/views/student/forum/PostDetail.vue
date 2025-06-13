@@ -24,10 +24,10 @@
         </div>
       </template>
 
-      <div class="post-content" v-html="purifiedContent"></div>
+      <div class="post-content markdown-body" v-html="purifiedContent"></div>
       <!-- 这里可以添加显示帖子文件的逻辑 -->
       <div class="post-attachments" v-if="post.files && post.files.length > 0">
-        <h4>附件：</h4>
+        <el-divider>附件</el-divider>
         <div v-for="file in post.files" :key="file.id" class="attachment-item">
           <el-image
               v-if="file.file_type === 'IMAGE' || file.file_type === 'GIF'"
@@ -35,14 +35,24 @@
               :preview-src-list="[file.file_url]"
               fit="cover"
               class="attachment-thumbnail"
+              lazy
           />
           <div v-else-if="file.file_type === 'VIDEO'" class="video-thumbnail" @click="playVideo(file.file_url)">
-            <el-image :src="file.thumbnail_url" fit="cover"/>
+            <el-image :src="file.thumbnail_url" fit="cover" class="attachment-thumbnail">
+              <template #error>
+                <div class="image-slot">视频封面</div>
+              </template>
+            </el-image>
             <el-icon class="play-icon">
               <VideoPlay/>
             </el-icon>
           </div>
-          <el-link v-else :href="file.file_url" target="_blank">{{ file.original_name }}</el-link>
+          <el-link v-else :href="file.file_url" target="_blank" type="primary">
+            <el-icon>
+              <Paperclip/>
+            </el-icon>
+            {{ file.original_name }}
+          </el-link>
         </div>
       </div>
 
@@ -58,12 +68,11 @@
 
       <!-- 发表评论 -->
       <div class="comment-composer">
-        <el-input
+        <v-md-editor
             v-model="newComment.content"
-            type="textarea"
-            :rows="3"
+            height="150px"
             placeholder="发表你的看法..."
-        />
+        ></v-md-editor>
         <div class="composer-actions">
           <el-switch v-model="newComment.is_anonymous" active-text="匿名评论"/>
           <el-button type="primary" @click="submitComment" :loading="submittingComment">发表评论</el-button>
