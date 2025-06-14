@@ -1,7 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import ClassViewSet, StudentViewSet, login_view, logout_view, me_view, TeacherViewSet, SuperAdminViewSet
+from .views import ClassViewSet, StudentViewSet, login_view, logout_view, me_view, TeacherViewSet, SuperAdminViewSet, \
+    UserInfoView
 
 router = DefaultRouter()
 router.register(r'classes', ClassViewSet, basename='class')
@@ -17,4 +18,5 @@ urlpatterns = [
     path('api/me/', me_view, name='api_me'),
     path('api/students/download_template/', StudentViewSet.as_view({'get': 'download_template'}),
          name='download-template'),
+    path('api/userinfo/', UserInfoView.as_view(), name='user_info'),
 ]

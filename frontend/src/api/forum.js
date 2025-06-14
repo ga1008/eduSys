@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {useUserStore} from '@/store/user';
 import router from '@/router';
+import requestEdu from '@/utils/request'; // 引入原有的 requestEdu 实例
 
 // 创建一个专门用于 forum API 的 axios 实例
 const forumService = axios.create({
@@ -77,6 +78,11 @@ export const unlikePost = (postId) => forumService.post(`/posts/${postId}/unlike
  * @param {string} period - 'week' or 'month'
  */
 export const fetchHotPosts = (period = 'week') => forumService.get('/posts/hot/', {params: {period}});
+
+
+export const viewPost = (postId) => forumService.post(`/posts/${postId}/view/`);
+
+export const fetchUserInfo = (userid) => requestEdu.get(`/userinfo/user/${userid}/`);
 
 
 // --- 评论 (Comment) 相关 API ---

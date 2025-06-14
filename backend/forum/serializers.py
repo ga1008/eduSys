@@ -37,9 +37,22 @@ class PostFileSerializer(serializers.ModelSerializer):
 
 class CommentAuthorSerializer(UserSimpleSerializer):
     """用于评论中显示作者信息的序列化器，处理匿名"""
+    class_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta(UserSimpleSerializer.Meta):
-        fields = ['id', 'username', 'real_name', 'avatar']
+        fields = ['id', 'username', 'name', 'real_name', 'avatar', 'role', 'class_name', 'avatar_url']
+
+    def get_class_name(self, obj):
+        # 返回班级名称，如果没有班级则返回空字符串
+        return obj.class_enrolled.name if obj.class_enrolled else ''
+
+    def get_avatar_url(self, obj):
+        # 返回头像的完整URL
+        if obj.avatar:
+            client = MinioClient()
+            return client.get_file_url(obj.avatar)
+        return None
 
 
 class ReplySerializer(serializers.ModelSerializer):
@@ -87,6 +100,7 @@ class PostSerializer(serializers.ModelSerializer):
     files = PostFileSerializer(many=True, read_only=True)  # 修改：使用新的序列化器
     comments = CommentSerializer(many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
+    views = serializers.IntegerField(source='view_count', read_only=True)
 
     class Meta:
         model = Post
@@ -94,8 +108,11 @@ class PostSerializer(serializers.ModelSerializer):
             'id', 'title', 'content', 'author', 'tags', 'files', 'comments',
             'is_anonymous', 'visibility', 'allow_comments', 'allow_ai_comments',
             'view_count', 'like_count', 'comment_count', 'is_liked',
-            'created_at', 'updated_at', 'files'
+            'created_at', 'updated_at', 'files', 'views'
         ]
+
+    def get_views(self, obj):
+        return obj.view_count
 
     def get_author(self, obj):
         user = self.context['request'].user
@@ -109,8 +126,18 @@ class PostSerializer(serializers.ModelSerializer):
 
         if obj.is_anonymous and not can_view_real_name:
             return {'id': None, 'username': '匿名用户', 'real_name': '匿名用户', 'avatar': None}
-
-        return UserSimpleSerializer(obj.author).data
+        client = MinioClient()
+        avatar_url = client.get_file_url(obj.author.avatar) if obj.author.avatar else None
+        data = {
+            'id': obj.author.id,
+            'username': obj.author.username,
+            'real_name': obj.author.name if can_view_real_name else '匿名用户',
+            'name': obj.author.name if can_view_real_name else '匿名用户',
+            'avatar': avatar_url,
+            'role': obj.author.role,
+            'class_name': obj.author.class_enrolled.name if obj.author.class_enrolled else ''
+        }
+        return data
 
     def get_is_liked(self, obj):
         user = self.context['request'].user

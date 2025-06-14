@@ -560,3 +560,38 @@ class ImportStudentsView(APIView):
         # 将新创建的学生序列化返回
         serializer = StudentSerializer(new_students, many=True)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# 根据id获取用户基本信息
+class UserInfoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='user/(?P<user_id>[^/.]+)', url_name='user_info')
+    def get_info(self, request, user_id):
+        """根据用户ID获取用户基本信息"""
+        try:
+            user = User.objects.get(id=user_id)
+            if user.role == 'student':
+                serializer = StudentSerializer(user)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            elif user.role == 'teacher':
+                data = {
+                    "id": user.id,
+                    "name": user.name,
+                    "role": user.role,
+                    "teacher_number": user.teacher_number,
+                    "email": user.email,
+                    "phone": user.phone,
+                }
+                return Response(data, status=status.HTTP_200_OK)
+            elif user.role == 'superadmin':
+                data = {
+                    "id": user.id,
+                    "name": user.name,
+                    "role": user.role,
+                }
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                return Response({"detail": "不支持的用户角色"}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({"detail": "用户不存在"}, status=status.HTTP_404_NOT_FOUND)

@@ -75,7 +75,11 @@ class PostViewSet(viewsets.ModelViewSet):
         if created:
             post.like_count = F('like_count') + 1
             post.save(update_fields=['like_count'])
-        return Response({'status': 'liked'}, status=status.HTTP_200_OK)
+        return Response({
+            'status': 'liked',
+            'like_count': post.like_count,
+            'post_id': post.id,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def unlike(self, request, pk=None):
@@ -84,22 +88,24 @@ class PostViewSet(viewsets.ModelViewSet):
         if deleted_count > 0:
             post.like_count = F('like_count') - 1
             post.save(update_fields=['like_count'])
-        return Response({'status': 'unliked'}, status=status.HTTP_200_OK)
+        return Response({
+            'status': 'unliked',
+            'like_count': post.like_count,
+            'post_id': post.id,
+        }, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['get'])
-    def hot(self, request):
-        """获取热点帖子，例如过去7天内按点赞和评论数排序"""
-        period = request.query_params.get('period', 'week')  # 'week' or 'month'
-        days = 30 if period == 'month' else 7
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def view(self, request, pk=None):
+        post = self.get_object()
+        post.view_count = F('view_count') + 1
+        post.save(update_fields=['view_count'])
 
-        since = timezone.now() - timedelta(days=days)
-
-        hot_posts = self.get_queryset().filter(created_at__gte=since).annotate(
-            hotness=F('like_count') + F('comment_count') * 2  # 简单加权
-        ).order_by('-hotness', '-created_at')[:10]  # 取前10条
-
-        serializer = self.get_serializer(hot_posts, many=True)
-        return Response(serializer.data)
+        post = self.get_object()
+        return Response({
+            'status': 'viewed',
+            'view_count': post.view_count,
+            'post_id': post.id,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def hot(self, request):

@@ -12,13 +12,18 @@
         <div class="author-meta">
           <el-avatar :size="40" :src="post.author.avatar || defaultAvatar"/>
           <div class="author-info">
-            <span class="author-name">{{ post.author.real_name || '匿名用户' }}</span>
-            <span class="post-time">{{ formatTime(post.created_at) }}</span>
+            <span class="author-name">{{ getAuthorName(post.author) }}</span>
+            <el-tag class="post-time" style="margin-left: 10px">{{ formatTime(post.created_at) }}</el-tag>
+            <el-tag class="post-view-count" style="margin-left: 10px">围观 {{ post.view_count }}</el-tag>
+            <el-tag class="post-comment-count" style="margin-left: 10px">花生 {{ post.comment_count }}</el-tag>
           </div>
           <div class="post-actions">
             <el-button :type="post.is_liked ? 'primary' : 'default'" :icon="CaretTop" @click="togglePostLike" round>
               点赞 {{ post.like_count }}
             </el-button>
+            <el-tag v-for="tag in post.tags" :key="tag.id" size="small" type="success" effect="plain">
+              {{ tag.name }}
+            </el-tag>
           </div>
         </div>
       </template>
@@ -113,7 +118,16 @@ import {computed, onMounted, ref, reactive, defineComponent, inject, h, provide}
 import {useRoute, useRouter} from 'vue-router';
 import {ElAvatar, ElButton, ElMessage, ElTag} from 'element-plus';
 import {useUserStore} from '@/store/user';
-import {fetchPostById, createComment, likePost, unlikePost, likeComment, unlikeComment} from '@/api/forum';
+import {
+  fetchPostById,
+  createComment,
+  likePost,
+  unlikePost,
+  likeComment,
+  unlikeComment,
+  viewPost,
+  fetchUserInfo
+} from '@/api/forum';
 // [修改] 导入新图标 CaretTop
 import {CaretTop, VideoPlay, Paperclip, HotWater} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
@@ -131,6 +145,8 @@ dayjs.extend(relativeTime);
 dayjs.locale('zh-cn');
 
 const md = new MarkdownIt();
+const author = ref(null);
+const isAnonymous = ref(true);
 
 // ✨ 评论子组件 (精简后)
 const CommentItem = defineComponent({
@@ -145,7 +161,7 @@ const CommentItem = defineComponent({
     const allComments = computed(() => post.value?.comments || []);
     const getParentAuthorName = (parentId) => {
       const parent = allComments.value.find(c => c.id === parentId);
-      return parent ? (parent.author?.real_name || '匿名用户') : '原评论';
+      return parent ? (getUserName(parent.author.id) || '匿名用户') : '原评论';
     };
 
     // ✨ [移除] toggleCommentLike 函数已移至父组件
@@ -167,9 +183,40 @@ const CommentItem = defineComponent({
       h(ElAvatar, {size: 32, src: comment.author.avatar || this.defaultAvatar}),
       h('div', {class: 'comment-body'}, [
         h('div', {class: 'comment-header'}, [
-          h('span', {class: 'comment-author'}, comment.author.real_name || '匿名用户'),
+
+          h(
+              'span',
+              {
+                class: 'floor-number', style: {
+                  marginRight: '5px',
+                  color: '#aaa',
+                  fontSize: '0.8rem',
+                  borderRight: '1px solid #e0e0e0',
+                  padding: '0 5px'
+                }
+              },
+              `${comment.floor} 楼`
+          ),
+          // 如果回复人id是发帖人id并且不是匿名状态，则显示“楼主”字样
+          comment.author.id === author.value.id && !isAnonymous.value
+              ? h(
+                  'span',
+                  {
+                    class: 'comment-author-tag',
+                    style: {
+                      border: '1px solid #e0e0e0',
+                      padding: '2px 5px',
+                      borderRadius: '5px',
+                      fontSize: '0.8rem',
+                      color: '#409eff',
+                      marginRight: '5px'
+                    }
+                  },
+                  '楼主'
+              )
+              : null,
+          h('span', {class: 'comment-author'}, getCommentUserName(comment)),
           comment.is_ai_generated ? h(ElTag, {size: 'small'}, () => 'AI助教') : null,
-          h('span', {class: 'floor-number'}, `#${comment.floor}`),
           comment.parent_comment ? h('div', {class: 'reply-to'}, [
             '回复 ', h('span', {class: 'reply-author'}, `@${this.getParentAuthorName(comment.parent_comment)}`)
           ]) : null,
@@ -178,7 +225,6 @@ const CommentItem = defineComponent({
         h('div', {class: 'comment-footer'}, [
           h('span', {class: 'comment-time'}, this.formatTime(comment.created_at)),
           h('div', {class: 'comment-actions'}, [
-            // ✨ [修改] 点赞按钮的样式和 onClick 行为
             h(ElButton, {
               round: true,
               size: 'small',
@@ -205,6 +251,8 @@ const loading = ref(true);
 const submittingComment = ref(false);
 const composerRef = ref(null);
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
+
+const users = ref([]); // 用于存储用户信息，后续可扩展
 
 const newComment = reactive({
   content: '',
@@ -245,11 +293,64 @@ const regularComments = computed(() => {
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 });
 
+// 查看所有的评论，根据是否是楼主改变 comment-author-tag 的样式
+
+
+const getAuthorName = (author) => {
+  if (isAnonymous.value) return '无名';
+  if (!author || !author.id) return '无名';
+  return author.class_name + " " + author.name;
+};
+
+const getCommentUserName = (comment) => {
+  if (!comment.author || !comment.author.id) return '无名';
+  return comment.author.class_name + " " + comment.author.name
+};
+
+const getUserName = (userId) => {
+  for (const user of users.value) {
+    if (user.id === userId) {
+      return user.real_name || '匿名用户';
+    }
+  }
+  updateUserInfo(userId);
+  return '加载中...';
+};
+
+const updateUserInfo = async (userId) => {
+  if (!userId) return;
+  const userInfo = await getUserInfo(userId);
+  if (userInfo) {
+    // 如果用户信息已存在，则更新
+    const existingUser = users.value.find(u => u.id === userId);
+    if (existingUser) {
+      Object.assign(existingUser, userInfo);
+    } else {
+      users.value.push(userInfo);
+    }
+  }
+};
+
+
+const getUserInfo = async (userId) => {
+  try {
+    const res = await fetchUserInfo(userId);
+    return res.data;
+  } catch (error) {
+    ElMessage.error('获取用户信息失败');
+    return null;
+  }
+};
+
 const loadPost = async () => {
   loading.value = true;
   try {
     const res = await fetchPostById(postId);
     post.value = res.data;
+    author.value = post.value.author;
+    isAnonymous.value = post.value.is_anonymous;
+
+    await viewPost(postId); // 记录浏览量
   } catch (error) {
     ElMessage.error('加载帖子失败');
     router.back();
@@ -378,7 +479,7 @@ onMounted(loadPost);
   font-weight: 500;
 }
 
-.post-time {
+.post-time .post-view-count {
   font-size: 0.8rem;
   color: var(--text-color-secondary);
 }
