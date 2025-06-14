@@ -3,7 +3,6 @@ import {useUserStore} from '@/store/user';
 import router from '@/router';
 
 // 创建一个专门用于 forum API 的 axios 实例
-// 这样可以避免与其他模块（如 course, chatroom）的 baseURL 混淆
 const forumService = axios.create({
     baseURL: '/forum/api', // 指向我们在 vite.config.js 中为论坛设置的代理
     timeout: 10000,
@@ -40,7 +39,7 @@ export const fetchPostById = (postId) => forumService.get(`/posts/${postId}/`);
 
 /**
  * 创建新帖子
- * @param {object} formData - { title, content, is_anonymous, allow_comments, allow_ai_comments }
+ * @param {object} formData - FormData object
  */
 export const createPost = (formData) => forumService.post('/posts/', formData, {
     headers: {
@@ -94,6 +93,22 @@ export const fetchComments = (postId) => forumService.get(`/posts/${postId}/comm
  * @param {object} commentData - { content, is_anonymous, parent_comment }
  */
 export const createComment = (postId, commentData) => forumService.post(`/posts/${postId}/comments/`, commentData);
+
+
+/**
+ * 【新增】点赞评论
+ * @param {number} postId - 帖子ID
+ * @param {number} commentId - 评论ID
+ */
+export const likeComment = (postId, commentId) => forumService.post(`/posts/${postId}/comments/${commentId}/like/`);
+
+/**
+ * 【新增】取消点赞评论
+ * @param {number} postId - 帖子ID
+ * @param {number} commentId - 评论ID
+ */
+export const unlikeComment = (postId, commentId) => forumService.post(`/posts/${postId}/comments/${commentId}/unlike/`);
+
 
 /**
  * 删除评论
