@@ -157,9 +157,16 @@ class CommentViewSet(viewsets.ModelViewSet):
         if created:
             comment.like_count = F('like_count') + 1
             comment.save(update_fields=['like_count'])
-        # 刷新并返回最新的点赞数
+
+        # ✨ 新增：从数据库刷新 comment 对象
         comment.refresh_from_db()
-        return Response({'status': 'liked', 'like_count': comment.like_count}, status=status.HTTP_200_OK)
+
+        # ✨ 修改：返回完整的点赞数和点赞状态
+        return Response({
+            'status': 'liked',
+            'like_count': comment.like_count,
+            'is_liked': True  # 点赞后状态必然为 True
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def unlike(self, request, post_pk=None, pk=None):
@@ -168,18 +175,16 @@ class CommentViewSet(viewsets.ModelViewSet):
         if deleted_count > 0:
             comment.like_count = F('like_count') - 1
             comment.save(update_fields=['like_count'])
-        comment.refresh_from_db()
-        return Response({'status': 'unliked', 'like_count': comment.like_count}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def unlike(self, request, post_pk=None, pk=None):
-        comment = self.get_object()
-        deleted_count, _ = CommentLike.objects.filter(user=request.user, comment=comment).delete()
-        if deleted_count > 0:
-            comment.like_count = F('like_count') - 1
-            comment.save(update_fields=['like_count'])
-        return Response({'status': 'unliked', 'like_count': comment.like_count - (1 if deleted_count > 0 else 0)},
-                        status=status.HTTP_200_OK)
+        # ✨ 新增：从数据库刷新 comment 对象
+        comment.refresh_from_db()
+
+        # ✨ 修改：返回正确的点赞数和点赞状态
+        return Response({
+            'status': 'unliked',
+            'like_count': comment.like_count,
+            'is_liked': False  # 取消点赞后状态必然为 False
+        }, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         post = Post.objects.get(pk=self.kwargs['post_pk'])

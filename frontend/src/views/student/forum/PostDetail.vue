@@ -16,7 +16,7 @@
             <span class="post-time">{{ formatTime(post.created_at) }}</span>
           </div>
           <div class="post-actions">
-            <el-button :type="post.is_liked ? 'primary' : 'default'" :icon="StarFilled" @click="togglePostLike" round>
+            <el-button :type="post.is_liked ? 'primary' : 'default'" :icon="CaretTop" @click="togglePostLike" round>
               点赞 {{ post.like_count }}
             </el-button>
           </div>
@@ -66,6 +66,8 @@
               v-model="newComment.content"
               height="150px"
               :placeholder="newComment.placeholder"
+              left-toolbar="undo redo | bold italic | quote"
+              right-toolbar=""
           ></v-md-editor>
           <div class="composer-actions">
             <el-switch v-model="newComment.is_anonymous" active-text="匿名评论"/>
@@ -85,18 +87,16 @@
             </el-icon>
             热门评论
           </el-divider>
-          <div v-for="comment in pinnedComments" :key="comment.id" class="comment-item">
-            <CommentItem :comment="comment" :post-id="postId" @reply="replyToComment"/>
-          </div>
+          <CommentItem v-for="comment in pinnedComments" :key="comment.id" :comment="comment" @reply="replyToComment"
+                       @toggle-like="handleToggleCommentLike"/>
         </div>
 
+        <el-divider v-if="pinnedComments.length > 0 && regularComments.length > 0"/>
+
         <div v-if="regularComments.length > 0" class="regular-comments-wrapper">
-          <el-divider content-position="left">
-            {{ pinnedComments.length > 0 ? '最新评论' : '全部评论' }}
-          </el-divider>
-          <div v-for="comment in regularComments" :key="comment.id" class="comment-item">
-            <CommentItem :comment="comment" :post-id="postId" @reply="replyToComment"/>
-          </div>
+          <el-divider content-position="left" v-if="pinnedComments.length > 0">最新评论</el-divider>
+          <CommentItem v-for="comment in regularComments" :key="comment.id" :comment="comment" @reply="replyToComment"
+                       @toggle-like="handleToggleCommentLike"/>
         </div>
       </div>
       <el-empty v-else description="还没有评论，快来发表你的看法吧！"/>
@@ -109,15 +109,13 @@
 </template>
 
 <script setup>
-import {computed, onMounted, ref, reactive, provide, inject} from 'vue';
+import {computed, onMounted, ref, reactive, defineComponent, inject, h, provide} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
-import {ElMessage} from 'element-plus';
+import {ElAvatar, ElButton, ElMessage, ElTag} from 'element-plus';
 import {useUserStore} from '@/store/user';
-// API导入修正
 import {fetchPostById, createComment, likePost, unlikePost, likeComment, unlikeComment} from '@/api/forum';
-import {
-  StarFilled, VideoPlay, Paperclip, HotWater
-} from '@element-plus/icons-vue';
+// [修改] 导入新图标 CaretTop
+import {CaretTop, VideoPlay, Paperclip, HotWater} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
@@ -125,82 +123,82 @@ import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import VMdEditor from '@kangc/v-md-editor/lib/base-editor';
 import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
+import '@kangc/v-md-editor/lib/style/base-editor.css';
+import '@kangc/v-md-editor/lib/theme/style/github.css';
 
-// 子组件，用于渲染单条评论，避免模板过长
-const CommentItem = {
-  props: ['comment', 'postId'],
-  emits: ['reply'],
-  setup(props, {emit}) {
-    const md = new MarkdownIt();
-    const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
-    const post = inject('post'); // 从父组件注入整个帖子数据
-
-    const formatTime = (time) => dayjs(time).fromNow();
-    const renderedContent = computed(() => DOMPurify.sanitize(md.render(props.comment.content)));
-    const allComments = computed(() => post.value?.comments || []);
-
-    const getParentAuthorName = (parentId) => {
-      const parent = allComments.value.find(c => c.id === parentId);
-      return parent ? parent.author?.real_name || '匿名用户' : '原评论';
-    };
-
-    const handleCommentLike = async (comment) => {
-      try {
-        const apiCall = comment.is_liked ? unlikeComment : likeComment;
-        const res = await apiCall(props.postId, comment.id);
-        comment.like_count = res.data.like_count;
-        comment.is_liked = !comment.is_liked;
-      } catch (error) {
-        ElMessage.error('操作失败');
-      }
-    };
-
-    return {
-      formatTime,
-      renderedContent,
-      getParentAuthorName,
-      handleCommentLike,
-      defaultAvatar,
-      emit,
-    };
-  },
-  template: `
-    <div class="comment-item-inner">
-      <el-avatar :size="32" :src="comment.author.avatar || defaultAvatar"/>
-      <div class="comment-body">
-        <div class="comment-header">
-          <span class="comment-author">{{ comment.author.real_name || '匿名用户' }}</span>
-          <el-tag v-if="comment.is_ai_generated" size="small">AI助教</el-tag>
-          <div v-if="comment.parent_comment" class="reply-to">
-            回复 <span class="reply-author">@{{ getParentAuthorName(comment.parent_comment) }}</span>
-          </div>
-        </div>
-        <div class="comment-content markdown-body" v-html="renderedContent"></div>
-        <div class="comment-footer">
-          <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
-          <div class="comment-actions">
-            <el-button text :type="comment.is_liked ? 'primary' : ''" :icon="StarFilled"
-                       @click="handleCommentLike(comment)">
-              {{ comment.like_count || '' }}
-            </el-button>
-            <el-button text @click="emit('reply', comment)">回复</el-button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `
-};
-
-
-// 父组件逻辑
+VMdEditor.use(githubTheme, {});
 dayjs.extend(relativeTime);
 dayjs.locale('zh-cn');
 
 const md = new MarkdownIt();
+
+// ✨ 评论子组件 (精简后)
+const CommentItem = defineComponent({
+  name: 'CommentItem',
+  props: ['comment'],
+  // ✨ [修改] 声明会触发的自定义事件
+  emits: ['reply', 'toggle-like'],
+  setup(props, {emit}) {
+    const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
+    const post = inject('post');
+
+    const allComments = computed(() => post.value?.comments || []);
+    const getParentAuthorName = (parentId) => {
+      const parent = allComments.value.find(c => c.id === parentId);
+      return parent ? (parent.author?.real_name || '匿名用户') : '原评论';
+    };
+
+    // ✨ [移除] toggleCommentLike 函数已移至父组件
+
+    const formatTime = (time) => dayjs(time).fromNow();
+
+    return {
+      defaultAvatar,
+      getParentAuthorName,
+      formatTime,
+      emit, // 需要返回 emit 才能在 render 函数中使用
+    };
+  },
+  render() {
+    const {comment} = this;
+    const renderedContent = DOMPurify.sanitize(md.render(this.comment.content));
+
+    return h('div', {class: 'comment-item-inner'}, [
+      h(ElAvatar, {size: 32, src: comment.author.avatar || this.defaultAvatar}),
+      h('div', {class: 'comment-body'}, [
+        h('div', {class: 'comment-header'}, [
+          h('span', {class: 'comment-author'}, comment.author.real_name || '匿名用户'),
+          comment.is_ai_generated ? h(ElTag, {size: 'small'}, () => 'AI助教') : null,
+          h('span', {class: 'floor-number'}, `#${comment.floor}`),
+          comment.parent_comment ? h('div', {class: 'reply-to'}, [
+            '回复 ', h('span', {class: 'reply-author'}, `@${this.getParentAuthorName(comment.parent_comment)}`)
+          ]) : null,
+        ]),
+        h('div', {class: 'comment-content markdown-body', innerHTML: renderedContent}),
+        h('div', {class: 'comment-footer'}, [
+          h('span', {class: 'comment-time'}, this.formatTime(comment.created_at)),
+          h('div', {class: 'comment-actions'}, [
+            // ✨ [修改] 点赞按钮的样式和 onClick 行为
+            h(ElButton, {
+              round: true,
+              size: 'small',
+              type: comment.is_liked ? 'primary' : '',
+              icon: CaretTop,
+              onClick: () => this.emit('toggle-like', comment) // ✨ 上报事件，传递整个评论对象
+            }, () => comment.like_count || '赞'),
+            // [修改] 统一回复按钮尺寸
+            h(ElButton, {text: true, size: 'small', onClick: () => this.emit('reply', comment)}, () => '回复')
+          ])
+        ])
+      ])
+    ]);
+  }
+});
+
+
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
-
 const postId = route.params.postId;
 const post = ref(null);
 const loading = ref(true);
@@ -217,31 +215,23 @@ const newComment = reactive({
 
 const videoDialog = reactive({
   visible: false,
-  title: '视频播放',
+  title: '',
   url: '',
 });
 
-provide('post', post); // 注入post数据供子组件使用
+provide('post', post);
 
-// --- Computed Properties ---
 const purifiedContent = computed(() => {
-  if (post.value?.content) {
-    return DOMPurify.sanitize(md.render(post.value.content));
-  }
-  return '';
+  return post.value?.content ? DOMPurify.sanitize(md.render(post.value.content)) : '';
 });
 
 const allCommentsWithFloor = computed(() =>
     (post.value?.comments || []).map((c, index) => ({...c, floor: index + 1}))
 );
 
-const primaryComments = computed(() =>
-    allCommentsWithFloor.value.filter(c => !c.parent_comment)
-);
+const primaryComments = computed(() => allCommentsWithFloor.value.filter(c => !c.parent_comment));
 
 const pinnedComments = computed(() => {
-  if (!post.value) return [];
-  // 筛选出点赞数大于0的一级评论，按点赞数排序，取前3
   return [...primaryComments.value]
       .filter(c => c.like_count > 0)
       .sort((a, b) => b.like_count - a.like_count)
@@ -249,16 +239,12 @@ const pinnedComments = computed(() => {
 });
 
 const regularComments = computed(() => {
-  if (!post.value) return [];
   const pinnedIds = new Set(pinnedComments.value.map(c => c.id));
-  // 过滤掉已置顶的评论，按时间正序排序
   return primaryComments.value
       .filter(c => !pinnedIds.has(c.id))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 });
 
-
-// --- Methods ---
 const loadPost = async () => {
   loading.value = true;
   try {
@@ -277,31 +263,41 @@ const formatTime = (time) => dayjs(time).fromNow();
 
 const togglePostLike = async () => {
   if (!post.value) return;
+  const apiCall = post.value.is_liked ? unlikePost : likePost;
   try {
-    const apiCall = post.value.is_liked ? unlikePost : likePost;
-    await apiCall(postId);
-    post.value.like_count += post.value.is_liked ? -1 : 1;
-    post.value.is_liked = !post.value.is_liked;
+    // 帖子的点赞可以直接修改，因为它不是props
+    const res = await apiCall(postId);
+    post.value.like_count = res.data.like_count;
+    post.value.is_liked = res.data.is_liked;
+  } catch (error) {
+    ElMessage.error('操作失败');
+  }
+};
+
+// ✨ [新增] 处理评论点赞的函数，由父组件统一管理
+const handleToggleCommentLike = async (comment) => {
+  if (!post.value) return;
+  try {
+    const apiCall = comment.is_liked ? unlikeComment : likeComment;
+    const res = await apiCall(post.value.id, comment.id);
+
+    // 直接修改 comment 对象（它是 post.value.comments 数组中的一个引用）
+    comment.like_count = res.data.like_count;
+    comment.is_liked = res.data.is_liked;
+
   } catch (error) {
     ElMessage.error('操作失败');
   }
 };
 
 const submitComment = async () => {
-  if (!newComment.content.trim()) {
-    return ElMessage.warning('评论内容不能为空');
-  }
+  if (!newComment.content.trim()) return ElMessage.warning('评论内容不能为空');
   submittingComment.value = true;
   try {
-    const payload = {
-      content: newComment.content,
-      is_anonymous: newComment.is_anonymous,
-      parent_comment: newComment.parent_comment,
-    };
-    await createComment(postId, payload);
+    await createComment(postId, {...newComment});
     ElMessage.success('评论成功！');
-    cancelReply(); // 清空评论框
-    await loadPost(); // 重新加载数据
+    cancelReply();
+    await loadPost();
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '评论失败');
   } finally {
@@ -311,8 +307,7 @@ const submitComment = async () => {
 
 const replyToComment = (comment) => {
   newComment.parent_comment = comment.id;
-  const authorName = comment.author?.real_name || '匿名用户';
-  newComment.placeholder = `回复 @${authorName}`;
+  newComment.placeholder = `回复 @${comment.author.real_name || '匿名用户'}`;
   composerRef.value?.scrollIntoView({behavior: 'smooth'});
 };
 
@@ -325,26 +320,38 @@ const cancelReply = () => {
 const playVideo = (url) => {
   if (!url) return;
   videoDialog.url = url;
+  videoDialog.title = '视频预览';
   videoDialog.visible = true;
 };
 
 onMounted(loadPost);
 </script>
 
+
 <style scoped>
-/* 基本布局 */
+/* ✨ 1. 使用 CSS 变量统一管理颜色和间距，方便维护 */
 .post-detail-page {
+  --text-color-primary: #303133;
+  --text-color-secondary: #8590a6;
+  --border-color-light: #f0f2f5;
+  --primary-brand-color: #409eff;
+  --card-border-radius: 8px;
+  --spacing-small: 8px;
+  --spacing-medium: 12px;
+  --spacing-large: 20px;
+
   max-width: 960px;
-  margin: 20px auto;
+  margin: var(--spacing-large) auto;
   padding: 0 15px;
 }
 
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-large);
 }
 
 .post-card, .comments-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-large);
+  border-radius: var(--card-border-radius);
 }
 
 .markdown-body {
@@ -352,11 +359,10 @@ onMounted(loadPost);
   word-break: break-word;
 }
 
-/* 帖子头部 */
 .post-title {
   font-size: 1.8rem;
   font-weight: 600;
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-large);
 }
 
 .author-meta {
@@ -365,7 +371,7 @@ onMounted(loadPost);
 }
 
 .author-info {
-  margin-left: 12px;
+  margin-left: var(--spacing-medium);
 }
 
 .author-name {
@@ -374,16 +380,19 @@ onMounted(loadPost);
 
 .post-time {
   font-size: 0.8rem;
-  color: #8590a6;
+  color: var(--text-color-secondary);
 }
 
 .post-actions {
   margin-left: auto;
 }
 
-/* 帖子附件 */
+.post-content {
+  padding: 10px 0;
+}
+
 .post-attachments {
-  margin-top: 20px;
+  margin-top: var(--spacing-large);
 }
 
 .attachment-grid {
@@ -396,7 +405,7 @@ onMounted(loadPost);
   width: 100%;
   height: 120px;
   border-radius: 6px;
-  background-color: #f0f2f5;
+  background-color: var(--border-color-light);
   object-fit: cover;
 }
 
@@ -423,7 +432,7 @@ onMounted(loadPost);
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 8px;
+  padding: var(--spacing-small);
   border: 1px solid #dcdfe6;
   border-radius: 4px;
 }
@@ -434,7 +443,6 @@ onMounted(loadPost);
   text-overflow: ellipsis;
 }
 
-/* 评论区 */
 .comment-composer {
   display: flex;
   gap: 15px;
@@ -452,14 +460,26 @@ onMounted(loadPost);
   margin-top: 10px;
 }
 
+/* .comment-item 样式在 render 函数中未被使用，但保留以备将来扩展 */
 .comment-item {
   padding: 15px 0;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--border-color-light);
 }
 
 .comment-item-inner {
   display: flex;
   gap: 15px;
+  /* ✨ 为每个评论添加上边距和上边框，除了第一个 */
+  padding-top: var(--spacing-large);
+  margin-top: var(--spacing-large);
+  border-top: 1px solid var(--border-color-light);
+}
+
+/* ✨ 使用 :first-of-type 伪类移除第一个评论项的上边框和边距，使布局更干净 */
+.comments-list .comment-item-inner:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .comment-body {
@@ -469,7 +489,7 @@ onMounted(loadPost);
 .comment-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-small);
   margin-bottom: 5px;
   flex-wrap: wrap;
 }
@@ -479,18 +499,24 @@ onMounted(loadPost);
   font-size: 0.95rem;
 }
 
+.floor-number {
+  color: #aaa;
+  font-size: 0.8rem;
+  margin-left: 5px;
+}
+
 .reply-to {
   font-size: 0.9rem;
   color: #555;
 }
 
 .reply-author {
-  color: #409eff;
+  color: var(--primary-brand-color);
   font-weight: 500;
 }
 
 .comment-content {
-  margin: 8px 0;
+  margin: var(--spacing-small) 0;
   font-size: 0.95rem;
 }
 
@@ -498,12 +524,42 @@ onMounted(loadPost);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #8590a6;
+  color: var(--text-color-secondary);
   font-size: 0.8rem;
 }
 
 .comment-actions {
   display: flex;
   align-items: center;
+}
+
+/* ✨ 2. 交互优化：合并选择器并增加悬停效果 */
+.post-actions .el-button,
+.comment-actions .el-button {
+  transition: all 0.2s ease-in-out;
+}
+
+/* 为按钮增加悬停效果，提升用户体验 */
+.post-actions .el-button:hover,
+.comment-actions .el-button:hover {
+  filter: brightness(1.1);
+}
+
+/* 当按钮被点击或激活时，给图标一个轻微的“跳动”效果 */
+.post-actions .el-button:active .el-icon,
+.comment-actions .el-button:active .el-icon {
+  animation: bounce-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 </style>
