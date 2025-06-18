@@ -28,7 +28,7 @@
                     }}
                   </el-tag>
                   <span class="meta-item"><el-icon><View/></el-icon>{{ post.view_count }}</span>
-                  <span class="meta-item"><el-icon><StarFilled/></el-icon>{{ post.like_count }}</span>
+                  <span class="meta-item"><el-icon><CaretTop/></el-icon>{{ post.like_count }}</span>
                   <span class="meta-item"><el-icon><ChatDotRound/></el-icon>{{ post.comment_count }}</span>
                   <span class="meta-item-time">{{ formatTime(post.created_at) }}</span>
                 </div>
@@ -120,7 +120,7 @@ import {useRouter} from 'vue-router';
 import {ElMessage,} from 'element-plus';
 import '@kangc/v-md-editor';
 import {createPost, fetchHotPosts, fetchPosts, fetchTags} from '@/api/forum';
-import {ChatDotRound, Edit, StarFilled, View} from '@element-plus/icons-vue';
+import {ChatDotRound, Edit, StarFilled, View, CaretTop} from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
