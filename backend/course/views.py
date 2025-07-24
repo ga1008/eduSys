@@ -636,7 +636,7 @@ class HomeworkViewSet(viewsets.ModelViewSet):
         for sub in submissions:
             temp = {
                 'id': sub.id,
-                'title': sub.title,
+                'title': sub.assignment.title,
                 'content': sub.content,
                 'submit_time': sub.submit_time,
                 'student_id': sub.student.id,
@@ -676,7 +676,7 @@ class HomeworkViewSet(viewsets.ModelViewSet):
                 'score': sub.score,
                 'teacher_comment': sub.teacher_comment,
                 'is_returned': sub.is_returned,
-                'title': sub.title,
+                'title': sub.assignment.title,
                 'content': sub.content,
                 'assignment': sub.assignment.id,
                 'ai_grading_enabled': sub.assignment.ai_grading_enabled,
